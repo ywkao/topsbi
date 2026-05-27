@@ -1,24 +1,24 @@
-from hist import Hist
-from hist.axis import Regular, StrCategory
 from matplotlib.axes import Axes
 from matplotlib.ticker import StrMethodFormatter
-from topsbi.tools.buildLikelihood import expandArray
 from topsbi.tools.metrics import netEval
-from topcoffea.modules.histEFT import HistEFT
 
 import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as mh
 
-import os torch, yaml
+import os, torch, yaml
 
 def kinematicRatioPlot(
-    x: np.array, 
-    dlr: np.array, 
-    plr: np.array, 
-    fitCoefs: list[float], 
+    x: np.array,
+    dlr: np.array,
+    plr: np.array,
+    fitCoefs: list[float],
     **params
 ):
+    from hist import Hist
+    from hist.axis import Regular, StrCategory
+    from topsbi.tools.data import expand_array
+    from topcoffea.modules.histEFT import HistEFT
     """
     Plots histogram and ratio for dedicated and parametric training.
     Ratios are calculated with respect to HistEFT.
@@ -66,8 +66,8 @@ def kinematicRatioPlot(
                       )
     
     #convert the likelihood ratio to weights
-    bkg  = fitCoefs@expandArray(params['backgroundTrainingPoint']).detach().numpy()
-    sig  = fitCoefs@expandArray(params['signalTrainingPoint']).detach().numpy()
+    bkg  = fitCoefs@expand_array(params['backgroundTrainingPoint']).detach().numpy()
+    sig  = fitCoefs@expand_array(params['signalTrainingPoint']).detach().numpy()
     norm = sig.sum()/bkg.sum()*bkg/x.shape[0]
     dedi = dlr*norm
     para = plr*norm

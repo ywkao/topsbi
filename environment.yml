@@ -10,3 +10,4 @@ dependencies:
   - tqdm
   - pyyaml
   - mplhep
+  - scikit-learn

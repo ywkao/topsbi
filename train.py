@@ -1,7 +1,6 @@
 from topsbi.model.net import Model
-from topsbi.tools.buildLikelihood import expandArray
 from topsbi.tools.plots import networkPlots
-from topsbi.tools.data import prepare_weights, prepare_features, get_probabilities
+from topsbi.tools.data import parameterize_weights, prepare_features, get_probabilities
 
 import argparse, tqdm, torch, yaml
 
@@ -18,8 +17,8 @@ def main(config):
         config['method'] = 'stitched'
     
     if config['method'] == 'parameterized':
-        test_p0,  test_p1,  test_wcs  = prepare_weights(test_coefs, config)
-        train_p0, train_p1, train_wcs = prepare_weights(train_coefs, config)
+        test_p0,  test_p1,  test_wcs  = parameterize_weights(test_coefs, config)
+        train_p0, train_p1, train_wcs = parameterize_weights(train_coefs, config)
         test_feats  = torch.concatenate([test_feats,  test_wcs],  dim=1)
         train_feats = torch.concatenate([train_feats, train_wcs], dim=1)
     elif config['method'] == 'stitched':

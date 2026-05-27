@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 
 cost =  torch.nn.BCELoss(reduction='mean')
 
@@ -65,7 +66,7 @@ class Model:
         features: inputs used to train the neural network
         device: device used to train the neural network
         """
-        manual_seed(seed)
+        torch.manual_seed(seed)
         self.net  = Net(nFeatures, device, config)
         self.device = device
         cost.to(device)
