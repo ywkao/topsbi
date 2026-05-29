@@ -165,6 +165,9 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     performance = {}
     
     #convert tensors to np arrays
+    device = next(net.parameters()).device
+    features = features.to(device)
+
     s      = net(features).ravel().detach().cpu().numpy()
     noOnes = s < 1
     s      = s[noOnes]

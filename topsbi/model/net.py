@@ -81,6 +81,10 @@ class Model:
         Returns:
             weighted loss 
         """
+        features = features.to(self.device)
+        w0 = w0.to(self.device)
+        w1 = w1.to(self.device)
+
         truth       = torch.cat([torch.zeros(w0.shape[0], device=self.device), 
                                  torch.ones(w1.shape[0], device=self.device)])
         features    = torch.cat([features, features])
