@@ -362,7 +362,7 @@ def lrMeanPlot(
     sumxw, _    = np.histogram(lrhat, bins = qbins, weights = p0 * lrhat)
     
     mean     = sumwlr / sumw
-    err_mean = np.sqrt(sumw2lr2 - 2 * sumw2lr * mean + sumw2 * mean**2) / sumw
+    err_mean = np.sqrt(np.maximum(0, sumw2lr2 - 2 * sumw2lr * mean + sumw2 * mean**2)) / sumw
     
     xcenter  = sumxw / sumw 
     xerr = abs(np.stack([xcenter - qbins[:-1], qbins[1:] - xcenter], axis=0))
@@ -418,7 +418,7 @@ def sMeanPlot(
     sumxw, _    = np.histogram(shat, bins = qbins, weights = w * shat)
     
     mean     = sumws / sumw
-    err_mean = np.sqrt(sumw2s2 - 2 * sumw2s * mean + sumw2 * mean**2) / sumw
+    err_mean = np.sqrt(np.maximum(0, sumw2s2 - 2 * sumw2s * mean + sumw2 * mean**2)) / sumw
     
     xcenter  = sumxw / sumw 
     xerr = abs(np.stack([xcenter - qbins[:-1], qbins[1:] - xcenter], axis=0))

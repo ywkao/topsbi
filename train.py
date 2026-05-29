@@ -10,8 +10,11 @@ def main(config):
         config['device'] = 'cpu'
     torch.manual_seed(config['seed'])
 
+    print("[INFO] loading training samples...")
     test_feats,   test_coefs  = torch.load(f'{config["data"]}/test.p', weights_only=False)[:]
     train_feats,  train_coefs = torch.load(f'{config["data"]}/train.p', weights_only=False)[:]
+    test_feats,  test_coefs  = test_feats.float(),  test_coefs.float()
+    train_feats, train_coefs = train_feats.float(), train_coefs.float()
     
     if 'method' not in config.keys():
         config['method'] = 'stitched'
@@ -28,16 +31,18 @@ def main(config):
     test_coefs  = None
     train_coefs = None
 
+    print("[INFO] preparing training features...")
     test_feats  = prepare_features(test_feats)
     train_feats = prepare_features(train_feats)
 
     batches   = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_feats, train_p0, train_p1), 
-                                            batch_size=config['batchSize'], shuffle=True, num_workers=16)
+                                            batch_size=config['batchSize'], shuffle=True, num_workers=8)
     model     = Model(nFeatures=test_feats.shape[1], device=config['device'], config=config['network'], seed=config['seed'])
     optimizer = torch.optim.Adam(model.net.parameters(), lr=config['learningRate'])
     trainLoss = [model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item()]
     testLoss  = [model.loss(test_feats, test_p0, test_p1).item()]
 
+    print("[INFO] starting networkPlots for every 50 epochs...")
     for epoch in tqdm.tqdm(range(config['epochs'])):
         if epoch%50 == 0:
             networkPlots(test_feats, test_p0, test_p1, model.net, trainLoss, testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
@@ -59,4 +64,3 @@ if __name__=="__main__":
     with open(parser.parse_args().config, 'r') as f:
         config = yaml.safe_load(f)
     config = main(config)
-    

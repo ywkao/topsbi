@@ -34,6 +34,7 @@ def parameterize_weights(
         p1:  event probabilits under randomized c1 from config ranges
         wcs: random WC values used to calculate p1
     """
+    coefs = coefs.float()
     coefs /= (coefs@expand_array(config['cg'])).mean()
     wcs = [torch.ones(coefs.shape[0])]
     #choose random WC values
@@ -64,6 +65,7 @@ def get_probabilities(
         p0: event probability under c0
         p1: event probability under c1
     """
+    coefs = coefs.float()
     p0  = coefs@expand_array(config['c0'])
     p1  = coefs@expand_array(config['c1'])
     p0 /= p0.sum()
