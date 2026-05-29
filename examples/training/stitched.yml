@@ -53,13 +53,13 @@ cg:
 - 1.5
 - 1.5
 - 1.5
-data: /uscms/home/honor/nobackup/Outputs_sbi/pretraining/modCentral_total
-device: cpu
+data: ./samples
+device: cuda
 epochs: 100
 factor: 0.1
 learningRate: 0.0005
 method: stitched
-name: /uscms/home/ywkao/nobackup/Outputs_sbi/results/fastTrain/gen/ctj8/1.0
+name: ./outputs/ctj8/1.0
 network:
 - activation: LeakyReLU
   out: 128
