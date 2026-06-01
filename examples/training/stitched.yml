@@ -54,7 +54,7 @@ cg:
 - 1.5
 - 1.5
 data: /uscms/home/honor/nobackup/Outputs_sbi/pretraining/modCentral_total
-device: cpu
+device: cuda 
 epochs: 100
 factor: 0.1
 learningRate: 0.0005
