@@ -28,6 +28,10 @@ def main(config):
         test_p0,  test_p1  = get_probabilities(test_coefs, config)
         train_p0, train_p1 = get_probabilities(train_coefs, config)
 
+    print(test_feats.shape)  # (n_events, nFeatures)
+    print(test_coefs.shape)
+    print(test_feats[:5])
+
     test_coefs  = None
     train_coefs = None
 

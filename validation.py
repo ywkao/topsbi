@@ -102,4 +102,4 @@ if __name__=="__main__":
     parser.add_argument('--output', '-o' , help = 'location to save output plots')
 
     args = parser.parse_args()
-    main(args.parametric, args.dedicated, args.output, args.validation_set, args.network)
+    main(args.parametric, args.dedicated, args.output)

@@ -26,3 +26,12 @@ pip install .
 ```
 ## Network Training
 All of the training is done through `train.py` which takes a single argument, a path to a configuration yaml. Examples of these yaml files can be found in the examples directory. As the fileds in these configuration files will be updated regulary as various features are added, a serpate README can be found in this directory.
+
+## Note
+```
+# validation
+python validation.py -p examples/validation/config.yml -d <your_dedicated_config.yml> -o <output_dir>
+
+# semileptonic samples
+ls /eos/uscms//store/user/honor/TTbarSemileptonic/modCentral/251114_001833
+```

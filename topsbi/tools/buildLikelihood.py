@@ -65,7 +65,7 @@ class fullLikelihood:
                 self.ratios += [torch.ones(features.shape[0])]
             else:
                 self.ratios += [network(features)]
-        self.trainingMatrix = vstack(self.trainingMatrix)
+        self.trainingMatrix = torch.vstack(self.trainingMatrix)
         self.zerosMask = ~(self.trainingMatrix == 0).all(dim=0)
         self.trainingMatrix = self.trainingMatrix[:,self.zerosMask]
         self.ratios = torch.vstack(self.ratios)
