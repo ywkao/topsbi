@@ -32,7 +32,7 @@ def kinematicRatioPlot(
     """
     #initialize the figure
     ax   = []
-    fig  = plt.figure(figsize=(12,9))
+    fig  = plt.figure()
     grid = fig.add_gridspec(2, 1, hspace=0.05, height_ratios=[5, 1])
     ax  += [fig.add_subplot(grid[0])]
     ax  += [fig.add_subplot(grid[1], sharex=ax[0])]
@@ -176,7 +176,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     predLr = s/(1-s)
 
     #loss curves
-    fig, ax = plt.subplots(figsize=[16,16])
+    fig, ax = plt.subplots()
     loss_curve(ax, train_loss, test_loss)
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
     fig.savefig(f'{label}/loss.png')
@@ -186,7 +186,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     plt.close()
 
     #plot the network output
-    fig, ax = plt.subplots(figsize=[12,7])
+    fig, ax = plt.subplots()
     bins = np.linspace(0,1,200)
     ax.hist(s, weights=p0, bins=bins, alpha=0.5, label='Background', density=True)
     ax.hist(s, weights=p1, bins=bins, alpha=0.5, label='Signal', density=True)
@@ -206,7 +206,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     performance['Accuracy'] = a
 
     #make ROC curves
-    fig, ax = plt.subplots(figsize=[16,16])
+    fig, ax = plt.subplots()
     ax.plot(fpr, tpr, label='Network Performance', linewidth=3)
     ax.plot([0,1],[0,1], ':', label='Baseline', linewidth=3)
     ax.legend()
@@ -221,7 +221,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     plt.close()
 
     #check quantile binned s
-    fig, ax = plt.subplots(figsize=[16,16])
+    fig, ax = plt.subplots()
     performance['sChiExcl'] = sMeanPlot(ax, s, p0, p1, 1000, 0.01)
     fig.savefig(f'{label}/sExcl.png')
     ax.set_xscale('log')
@@ -230,7 +230,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     plt.clf()
     plt.close()
 
-    fig, ax = plt.subplots(figsize=[16,16])
+    fig, ax = plt.subplots()
     performance['sChiIncl'] = sMeanPlot(ax, s, p0, p1, 1000, 0)
     fig.savefig(f'{label}/sIncl.png')
     ax.set_xscale('log')
@@ -239,7 +239,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     plt.clf()
     plt.close()
 
-    fig, ax = plt.subplots(figsize=[16,16])
+    fig, ax = plt.subplots()
     sMeanPlot(ax, s, p0, p1, 50, 0.01)
     fig.savefig(f'{label}/sExcl_lobin.png')
     ax.set_xscale('log')
@@ -248,7 +248,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     plt.clf()
     plt.close()
 
-    fig, ax = plt.subplots(figsize=[16,16])
+    fig, ax = plt.subplots()
     sMeanPlot(ax, s, p0, p1, 50, 0)
     fig.savefig(f'{label}/sIncl_lobin.png')
     ax.set_xscale('log')
@@ -258,7 +258,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     plt.close()
     
     #check quantile binned lr
-    fig, ax = plt.subplots(figsize=[16,16])
+    fig, ax = plt.subplots()
     performance['lrChiExcl'] = lrMeanPlot(ax, predLr, p1/p0, p0, 1000, 0.01)
     fig.savefig(f'{label}/lrExcl.png')
     ax.set_xscale('log')
@@ -267,7 +267,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     plt.clf()
     plt.close()
 
-    fig, ax = plt.subplots(figsize=[16,16])
+    fig, ax = plt.subplots()
     performance['lrChiIncl'] = lrMeanPlot(ax, predLr, p1/p0, p0, 1000, 0)
     fig.savefig(f'{label}/lrIncl.png')
     ax.set_xscale('log')
@@ -276,7 +276,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     plt.clf()
     plt.close()
 
-    fig, ax = plt.subplots(figsize=[16,16])
+    fig, ax = plt.subplots()
     lrMeanPlot(ax, predLr, p1/p0, p0, 50, 0.01)
     fig.savefig(f'{label}/lrExcl_lobin.png')
     ax.set_xscale('log')
@@ -285,7 +285,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
     plt.clf()
     plt.close()
 
-    fig, ax = plt.subplots(figsize=[16,16])
+    fig, ax = plt.subplots()
     lrMeanPlot(ax, predLr, p1/p0, p0, 50, 0)
     fig.savefig(f'{label}/lrIncl_lobin.png')
     ax.set_xscale('log')
@@ -308,14 +308,14 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label):
         print('skipping histogram plots...')
     else:
         try:
-            fig, ax = plt.subplots(figsize=[16,18])
+            fig, ax = plt.subplots()
             h = hist2d(ax, np.log10(predLr), np.log10((p1/p0)), p0, **{})
             fig.colorbar(h[3], ax=ax)
             fig.savefig(f'{label}/hist2d.png')
             plt.clf()
             plt.close()
         
-            fig, ax = plt.subplots(figsize=[16,18])
+            fig, ax = plt.subplots()
             h = hist2d(ax, np.log10(predLr), np.log10((p1/p0)), p0, logbins=True, **{})
             fig.colorbar(h[3], ax=ax)
             fig.savefig(f'{label}/hist2dLog.png')

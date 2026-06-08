@@ -27,6 +27,10 @@ def main(config):
     elif config['method'] == 'stitched':
         test_p0,  test_p1  = get_probabilities(test_coefs, config)
         train_p0, train_p1 = get_probabilities(train_coefs, config)
+    elif config['method'] == 'alice':
+        test_p0,  test_p1  = get_probabilities(test_coefs, config)
+        train_p0, train_p1 = get_probabilities(train_coefs, config)
+        test_p0 /= 2; test_p1 /= 2; train_p0 /= 2; train_p1 /= 2
 
     print(test_feats.shape)  # (n_events, nFeatures)
     print(test_coefs.shape)
@@ -41,7 +45,7 @@ def main(config):
 
     batches   = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_feats, train_p0, train_p1), 
                                             batch_size=config['batchSize'], shuffle=True, num_workers=8)
-    model     = Model(nFeatures=test_feats.shape[1], device=config['device'], config=config['network'], seed=config['seed'])
+    model     = Model(nFeatures=test_feats.shape[1], method=config['method'], device=config['device'], config=config['network'], seed=config['seed'])
     optimizer = torch.optim.Adam(model.net.parameters(), lr=config['learningRate'])
     trainLoss = [model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item()]
     testLoss  = [model.loss(test_feats, test_p0, test_p1).item()]
@@ -49,7 +53,8 @@ def main(config):
     print("[INFO] starting networkPlots for every 50 epochs...")
     for epoch in tqdm.tqdm(range(config['epochs'])):
         if epoch%50 == 0:
-            networkPlots(test_feats, test_p0, test_p1, model.net, trainLoss, testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
+            networkPlots(test_feats, test_p0, test_p1, model.net, trainLoss, 
+                         testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
         for train_feats, train_p0, train_p1 in batches:
             optimizer.zero_grad()
             loss = model.loss(train_feats, train_p0, train_p1)
