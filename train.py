@@ -44,7 +44,7 @@ def main(config):
     train_feats = prepare_features(train_feats)
 
     batches   = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_feats, train_p0, train_p1), 
-                                            batch_size=config['batchSize'], shuffle=True, num_workers=8)
+                                            batch_size=config['batchSize'], shuffle=True, num_workers=0)
     model     = Model(nFeatures=test_feats.shape[1], method=config['method'], device=config['device'], config=config['network'], seed=config['seed'])
     optimizer = torch.optim.Adam(model.net.parameters(), lr=config['learningRate'])
     trainLoss = [model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item()]
