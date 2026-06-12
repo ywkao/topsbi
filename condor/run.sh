@@ -7,4 +7,4 @@ nvidia-smi -L || true
 
 source /cvmfs/sft.cern.ch/lcg/views/LCG_109_cuda/x86_64-el9-gcc13-opt/setup.sh
 
-python /eos/user/y/ykao/SWAN_projects/analysis/condor/train.py "$CONFIG"
+python /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/train.py "$CONFIG"
