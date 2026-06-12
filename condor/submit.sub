@@ -1,0 +1,37 @@
+universe        = vanilla
+executable      = run.sh
+arguments       = $(config)
+
+request_gpus    = 1
+request_cpus    = 2
+request_memory  = 4096
++JobFlavour     = "longlunch"
+
+output          = logs/$(Cluster).$(Process).out
+error           = logs/$(Cluster).$(Process).err
+log             = logs/$(Cluster).$(Process).log
+
+MY.SendCredential = True            # for writing in EOS
+
+# notification    = Never # Always / Complete / Error / Never
+# notify_user     = ykao@cern.ch
+# queue config matching files /eos/home-y/ykao/SWAN_projects/analysis/configs/*.yml
+
+queue config in (
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/cQd1.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/cQd8.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/cQj11.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/cQj18.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/cQj31.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/cQj38.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/cQu1.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/cQu8.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/ctd1.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/ctd8.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/ctGIm.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/ctGRe.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/ctj1.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/ctj8.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/ctu1.yml
+    /eos/home-y/ykao/SWAN_projects/analysis/topsbi/condor/configs/ctu8.yml
+)

@@ -22,8 +22,8 @@ c1:
 - 0.0
 - 0.0
 - 0.0
-- 0.1
 - 0.0
+- 1.0
 - 0.0
 - 0.0
 - 0.0
@@ -54,12 +54,12 @@ cg:
 - 1.5
 - 1.5
 data: /eos/cms/store/user/ykao/topsbi/pretraining/
-device: cuda 
+device: cuda
 epochs: 100
 factor: 0.1
 learningRate: 0.0005
 method: stitched
-name: /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/ctj8/1.0
+name: /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/ctd1/1.0
 network:
 - activation: LeakyReLU
   out: 128
