@@ -5,6 +5,8 @@ arguments       = $(config)
 request_gpus    = 1
 request_cpus    = 2
 request_memory  = 4096
+require_gpus = (Capability >= 7.5)
+# require_gpus = regexp("A100", GPUs_DeviceName)
 +JobFlavour     = "longlunch"
 
 output          = logs/$(Cluster).$(Process).out

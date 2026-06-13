@@ -20,6 +20,16 @@ def netEval(s, p0, p1):
     labels  = np.concatenate([np.zeros(len(s)), np.ones(len(s))])
     weights = np.concatenate([p0, p1])
 
+    # print(weights.min(), weights.max(), (weights < 0).sum())
+    # print(np.isnan(scores).any(), np.isinf(scores).any())
+
+    weights = np.clip(weights, 0, None)
+    # print("neg:", (weights < 0).sum())
+    # print("zero:", (weights == 0).sum())
+    # print("nan/inf in scores:", np.isnan(scores).any(), np.isinf(scores).any())
+    # print("nan in labels:", np.isnan(labels).any())
+    # print("scores dtype:", scores.dtype)
+
     fpr, tpr, _ = roc_curve(labels, scores, sample_weight=weights)
     auc         = roc_auc_score(labels, scores, sample_weight=weights)
 
