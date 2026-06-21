@@ -1,6 +1,6 @@
 from numpy.random import poisson
 from torch.utils.data import DataLoader, TensorDataset
-
+import numpy as np
 import torch, tqdm
 
 def expand_array(
@@ -16,9 +16,11 @@ def expand_array(
     array_out = []
     for i in range(len(coefs)):
          for j in range(i+1):
-             array_out += [coefs[i]*coefs[j]]
-    return torch.tensor(array_out).type(torch.float32)
+             scale = 1.0 if j==i else np.sqrt(2)
+             array_out += [scale*coefs[i]*coefs[j]]
     
+    return torch.tensor(array_out).type(torch.float32)
+
 def parameterize_weights(
     coefs: torch.tensor,
     config: dict
