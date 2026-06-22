@@ -28,7 +28,7 @@ c1:
 - 0.0
 - 0.0
 - 0.0
-- 1.0
+- 10.0
 - 0.0
 - 0.0
 - 0.0
@@ -59,7 +59,7 @@ epochs: 100
 factor: 0.1
 learningRate: 0.0005
 method: stitched
-name: /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/cQj31/1.0
+name: /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/cQj31/10.0
 network:
 - activation: LeakyReLU
   out: 128
