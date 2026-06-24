@@ -1,8 +1,8 @@
 from topsbi.model.net import Model
-from topsbi.tools.plots import networkPlots
+from topsbi.tools.plots import networkPlots, kinematic_histogram, animate_plots
 from topsbi.tools.data import parameterize_weights, prepare_features, get_probabilities
 
-import argparse, tqdm, torch, yaml
+import argparse, glob, os, tqdm, torch, yaml
 
 from .schema import FEATURE_NAMES
 
@@ -26,6 +26,8 @@ def get_feature_indices(config):
     return indices
 
 def main(config):
+    with open(f'{config["data"]}/features.yml', 'r') as f:
+        features_config = yaml.safe_load(f)
     if config['device'] != 'cpu' and not torch.cuda.is_available():
         print("Warning, you tried to use cuda, but its not available. Will use the CPU")
         config['device'] = 'cpu'
@@ -57,7 +59,6 @@ def main(config):
     elif config['method'] == 'alice':
         test_p0,  test_p1  = get_probabilities(test_coefs, config)
         train_p0, train_p1 = get_probabilities(train_coefs, config)
-        test_p0 /= 2; test_p1 /= 2; train_p0 /= 2; train_p1 /= 2
 
     print(test_feats.shape)
     print(test_coefs.shape)
@@ -67,12 +68,14 @@ def main(config):
     train_coefs = None
 
     print("[INFO] preparing training features...")
-    test_feats  = prepare_features(test_feats)
-    train_feats = prepare_features(train_feats)
+    train_means = train_feats.mean(0)
+    train_stds  = train_feats.std(0)
+    train_feats = (train_feats - train_means) / train_stds
+    norm_test   = (test_feats - train_means) / train_stds
 
-    batches   = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_feats, train_p0, train_p1),
+    batches   = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_feats, train_p0, train_p1), 
                                             batch_size=config['batchSize'], shuffle=True, num_workers=0)
-    model     = Model(nFeatures=test_feats.shape[1], method=config['method'], device=config['device'], config=config['network'], seed=config['seed'])
+    model     = Model(nFeatures=train_feats.shape[1], method=config['method'], device=config['device'], config=config['network'], seed=config['seed'])
     optimizer = torch.optim.Adam(model.net.parameters(), lr=config['learningRate'])
 
     scheduler_type = config.get('scheduler', 'plateau')
@@ -103,8 +106,12 @@ def main(config):
         print("[INFO] scheduler: none")
 
     trainLoss = [model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item()]
-    testLoss  = [model.loss(test_feats, test_p0, test_p1).item()]
     lrHistory = [optimizer.param_groups[0]['lr']]
+    testLoss  = [model.loss(norm_test, test_p0, test_p1).item()]
+
+    os.makedirs(f'{config["name"]}/complete/animations', exist_ok=True)
+    for feature in features_config.keys():
+        os.makedirs(f'{config["name"]}/incomplete/kinematics/{feature}', exist_ok=True)
 
     # early stopping parameters
     patience      = config.get('patience', 10)
@@ -115,23 +122,24 @@ def main(config):
 
     print("[INFO] starting networkPlots for every 50 epochs...")
     for epoch in tqdm.tqdm(range(config['epochs'])):
-        if epoch % 50 == 0:
-            networkPlots(test_feats, test_p0, test_p1, model.net, trainLoss,
-                         testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}', lr_history=lrHistory)
+        s  = model.net(norm_test).cpu().detach().numpy().flatten()
+        noOnes = s != 1
+        s = s[noOnes]
+        lr = s / (1 - s)
+        tlr = (test_p1/test_p0).detach().cpu().numpy().flatten()
+        for feature, params in features_config.items():
+            kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes], 
+                                f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png')
+        trainLoss.append(model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item())
+        if epoch%50 == 0:
+            networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss, 
+                         testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
         for train_feats, train_p0, train_p1 in batches:
             optimizer.zero_grad()
             loss = model.loss(train_feats, train_p0, train_p1)
             loss.backward()
             optimizer.step()
 
-            ### # ── debug: print gradient norm ──
-            ### total_norm = sum(p.grad.norm().item()**2 for p in model.net.parameters() if p.grad is not None) ** 0.5
-            ### print(f"grad norm: {total_norm:.6e}")
-            ### print(train_p0[:10])
-            ### print(train_p1[:10])
-            ### print((trainLoss[0] - trainLoss[-1]) / trainLoss[0])
-
-        trainLoss.append(model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item())
         current_test_loss = model.loss(test_feats, test_p0, test_p1).item()
         testLoss.append(current_test_loss)
 
@@ -162,6 +170,17 @@ def main(config):
 
     # keep the best model for validation
     torch.save(model.net.state_dict(), f'{config["name"]}/model.pt')
+
+    s  = model.net(norm_test).cpu().detach().numpy().flatten()
+    noOnes = s != 1
+    s = s[noOnes]
+    lr = s / (1 - s)
+    tlr = (test_p1/test_p0).detach().cpu().numpy().flatten()
+    for feature, params in features_config.items():
+        kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes], 
+                            f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png')
+        plots = sorted(glob.glob(f'{config["name"]}/incomplete/kinematics/{feature}/*.png'))
+        animate_plots(plots, f'{config["name"]}/complete/animations/{feature}.gif')
 
     return config
 
