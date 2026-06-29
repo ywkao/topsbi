@@ -53,6 +53,7 @@ cg:
 - 1.5
 - 1.5
 - 1.5
+features: all
 data: /eos/cms/store/user/ykao/topsbi/pretraining/
 device: cuda 
 epochs: 100

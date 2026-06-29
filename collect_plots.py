@@ -14,7 +14,7 @@ fig_root  = Path("/eos/user/y/ykao/www/topsbi/figures")
 fig_root.mkdir(parents=True, exist_ok=True)
 shutil.copy2(index_src, fig_root / "index.php")
     
-values = ["1.0", "5.0", "10.0"]
+values = ["1.0", "3.0", "5.0"]
 for value in values:
     src_dir_tmpl = "/eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/{wc}/{value}/complete"
     dst_tmpl     = "/eos/user/y/ykao/www/topsbi/figures/{fig}/{wc}_value_{value}.png"
