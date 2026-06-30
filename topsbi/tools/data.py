@@ -73,6 +73,11 @@ def get_probabilities(
     p0 /= p0.sum()
     p1 /= p1.sum()
 
+    # rescale to O(1) per-event weight, avoid double "divide by N"
+    # interacting with BCELoss(reduction='mean')
+    p0 *= p0.shape[0]
+    p1 *= p1.shape[0]
+
     return p0, p1
 
 def prepare_features(

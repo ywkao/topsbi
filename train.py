@@ -107,6 +107,14 @@ def main(config):
             optimizer.zero_grad()
             loss = model.loss(train_feats, train_p0, train_p1)
             loss.backward()
+
+            ### # ── debug: print gradient norm ──
+            ### total_norm = sum(p.grad.norm().item()**2 for p in model.net.parameters() if p.grad is not None) ** 0.5
+            ### print(f"grad norm: {total_norm:.6e}")
+            ### print(train_p0[:10])
+            ### print(train_p1[:10])
+            ### print((trainLoss[0] - trainLoss[-1]) / trainLoss[0])
+
             optimizer.step()
         trainLoss.append(model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item())
         testLoss.append(model.loss(test_feats, test_p0, test_p1).item())
