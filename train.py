@@ -4,28 +4,7 @@ from topsbi.tools.data import parameterize_weights, prepare_features, get_probab
 
 import argparse, tqdm, torch, yaml
 
-FEATURE_NAMES = [
-    "lep_pt", "lep_eta", "lep_phi", "lep_mass",
-    "met_pt", "met_phi",
-    "jet0_pt", "jet0_eta", "jet0_phi", "jet0_mass",
-    "jet1_pt", "jet1_eta", "jet1_phi", "jet1_mass",
-    "jet2_pt", "jet2_eta", "jet2_phi", "jet2_mass",
-    "jet3_pt", "jet3_eta", "jet3_phi", "jet3_mass",
-    "njets", "HT", "mT_W",
-    "jet0_flav", "jet1_flav", "jet2_flav", "jet3_flav",
-    "lep_top_pt", "lep_top_eta", "lep_top_phi", "lep_top_mass",
-    "had_top_pt", "had_top_eta", "had_top_phi", "had_top_mass",
-    "dr_tt", "dr_lep_had", "m_ttbar", "cos_theta_star",
-    "dy_tt", "dphi_tt", "pt_tt", "y_tt",
-    "cos_theta_l", "cos_theta_had", "dphi_l_had",
-    "cos_lep_n", "cos_lep_r", "cos_lep_k",
-    "cos_had_n", "cos_had_r", "cos_had_k",
-    "beta_t_star", "c_hel", "c_han",
-    "dr_l_j0", "dr_l_j1", "dr_l_j2", "dr_l_j3",
-    "dr_j01", "dr_j02", "dr_j03", "dr_j12", "dr_j13", "dr_j23",
-    "m_j01", "m_j02", "m_j03", "m_j12", "m_j13", "m_j23",
-    "m_lb_min",
-]
+from .schema import FEATURE_NAMES
 
 def get_feature_indices(config):
     """
@@ -98,6 +77,13 @@ def main(config):
     trainLoss = [model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item()]
     testLoss  = [model.loss(test_feats, test_p0, test_p1).item()]
 
+    # early stopping parameters
+    patience      = config.get('patience', 10)
+    best_test_loss = float('inf')
+    best_epoch     = 0
+    patience_count = 0
+    best_state     = None
+
     print("[INFO] starting networkPlots for every 50 epochs...")
     for epoch in tqdm.tqdm(range(config['epochs'])):
         if epoch % 50 == 0:
@@ -107,6 +93,7 @@ def main(config):
             optimizer.zero_grad()
             loss = model.loss(train_feats, train_p0, train_p1)
             loss.backward()
+            optimizer.step()
 
             ### # ── debug: print gradient norm ──
             ### total_norm = sum(p.grad.norm().item()**2 for p in model.net.parameters() if p.grad is not None) ** 0.5
@@ -115,10 +102,30 @@ def main(config):
             ### print(train_p1[:10])
             ### print((trainLoss[0] - trainLoss[-1]) / trainLoss[0])
 
-            optimizer.step()
         trainLoss.append(model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item())
-        testLoss.append(model.loss(test_feats, test_p0, test_p1).item())
+        current_test_loss = model.loss(test_feats, test_p0, test_p1).item()
+        testLoss.append(current_test_loss)
+
+        # ── early stopping ──
+        if current_test_loss < best_test_loss:
+            best_test_loss = current_test_loss
+            best_epoch     = epoch
+            best_state     = {k: v.clone() for k, v in model.net.state_dict().items()}
+            patience_count = 0
+        else:
+            patience_count += 1
+            if patience_count >= patience:
+                print(f"[INFO] early stopping at epoch {epoch}, best epoch was {best_epoch} (test loss {best_test_loss:.4f})")
+                break
+
+    if best_state is not None:
+        model.net.load_state_dict(best_state)
+        print(f"[INFO] restored best checkpoint from epoch {best_epoch}")
+
     networkPlots(test_feats, test_p0, test_p1, model.net, trainLoss, testLoss, f'{config["name"]}/complete')
+
+    # keep the best model for validation
+    torch.save(model.net.state_dict(), f'{config["name"]}/model.pt')
 
     return config
 
