@@ -74,8 +74,37 @@ def main(config):
                                             batch_size=config['batchSize'], shuffle=True, num_workers=0)
     model     = Model(nFeatures=test_feats.shape[1], method=config['method'], device=config['device'], config=config['network'], seed=config['seed'])
     optimizer = torch.optim.Adam(model.net.parameters(), lr=config['learningRate'])
+
+    scheduler_type = config.get('scheduler', 'plateau')
+    if scheduler_type == 'plateau':
+        # ReduceLROnPlateau: steps LR down when val BCE stops improving.
+        # Directly optimises the calibration signal that determines ratio quality.
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min',
+            factor=config.get('factor', 0.5),
+            patience=config.get('lr_patience', 5),
+        )
+        print(f"[INFO] scheduler: ReduceLROnPlateau  factor={config.get('factor', 0.5)}  lr_patience={config.get('lr_patience', 5)}")
+    elif scheduler_type == 'cosine':
+        # Linear warmup → CosineAnnealingLR: smooth, deterministic, reproducible
+        # across EFT scan points when you want identical training conditions.
+        warmup = config.get('warmup_epochs', 5)
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[
+                torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup),
+                torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, config['epochs'] - warmup), eta_min=1e-6),
+            ],
+            milestones=[warmup],
+        )
+        print(f"[INFO] scheduler: cosine+warmup  warmup_epochs={warmup}  T_max={max(1, config['epochs'] - warmup)}")
+    else:
+        scheduler = None
+        print("[INFO] scheduler: none")
+
     trainLoss = [model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item()]
     testLoss  = [model.loss(test_feats, test_p0, test_p1).item()]
+    lrHistory = [optimizer.param_groups[0]['lr']]
 
     # early stopping parameters
     patience      = config.get('patience', 10)
@@ -88,7 +117,7 @@ def main(config):
     for epoch in tqdm.tqdm(range(config['epochs'])):
         if epoch % 50 == 0:
             networkPlots(test_feats, test_p0, test_p1, model.net, trainLoss,
-                         testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
+                         testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}', lr_history=lrHistory)
         for train_feats, train_p0, train_p1 in batches:
             optimizer.zero_grad()
             loss = model.loss(train_feats, train_p0, train_p1)
@@ -106,6 +135,13 @@ def main(config):
         current_test_loss = model.loss(test_feats, test_p0, test_p1).item()
         testLoss.append(current_test_loss)
 
+        if scheduler is not None:
+            if scheduler_type == 'plateau':
+                scheduler.step(current_test_loss)
+            else:
+                scheduler.step()
+        lrHistory.append(optimizer.param_groups[0]['lr'])
+
         # ── early stopping ──
         if current_test_loss < best_test_loss:
             best_test_loss = current_test_loss
@@ -122,7 +158,7 @@ def main(config):
         model.net.load_state_dict(best_state)
         print(f"[INFO] restored best checkpoint from epoch {best_epoch}")
 
-    networkPlots(test_feats, test_p0, test_p1, model.net, trainLoss, testLoss, f'{config["name"]}/complete')
+    networkPlots(test_feats, test_p0, test_p1, model.net, trainLoss, testLoss, f'{config["name"]}/complete', lr_history=lrHistory)
 
     # keep the best model for validation
     torch.save(model.net.state_dict(), f'{config["name"]}/model.pt')

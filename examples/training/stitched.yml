@@ -57,8 +57,11 @@ features: all
 data: /eos/cms/store/user/ykao/topsbi/pretraining/
 device: cuda 
 epochs: 100
-factor: 0.1
-learningRate: 0.0005
+learningRate: 0.001
+scheduler: plateau   # 'plateau' (default) | 'cosine' | 'none'
+factor: 0.5        # ReduceLROnPlateau: multiplicative LR decay factor
+lr_patience: 5     # ReduceLROnPlateau: epochs without improvement before LR step
+warmup_epochs: 5     # cosine only: linear-warmup length before cosine decay
 method: stitched
 name: /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/ctj8/1.0
 network:
