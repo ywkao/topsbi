@@ -69,10 +69,12 @@ network:
   in: 128
   out: 128
   type: Linear
+  dropout: 0.25
 - activation: Sigmoid
   in: 128
   out: 1
   type: Linear
+  dropout: 0.25
 patience: 10
 referencePoint: null
 seed: 42

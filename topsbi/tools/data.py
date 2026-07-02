@@ -70,13 +70,12 @@ def get_probabilities(
     coefs = coefs.float()
     p0  = coefs@expand_array(config['c0'])
     p1  = coefs@expand_array(config['c1'])
-    p0 /= p0.sum()
-    p1 /= p1.sum()
 
-    # rescale to O(1) per-event weight, avoid double "divide by N"
+    # Ensure O(1) per-event weight, avoid double "divide by N" (p0 /= p0.sum())
     # interacting with BCELoss(reduction='mean')
-    p0 *= p0.shape[0]
-    p1 *= p1.shape[0]
+    # Effectively, use division by mean (from Nick)
+    p0 /= p0.mean()
+    p1 /= p1.mean()
 
     return p0, p1
 
