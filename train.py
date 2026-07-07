@@ -43,6 +43,15 @@ def main(config):
     feat_idx    = get_feature_indices(config)
     test_feats  = test_feats[:,  feat_idx]
     train_feats = train_feats[:, feat_idx]
+
+    if config.get('features', 'all') != 'all':
+        selected_set = set(config['features'])
+        loc_remap = {orig: new for new, orig in enumerate(feat_idx)}
+        features_config = {
+            name: {**params, 'loc': loc_remap[params['loc']]}
+            for name, params in features_config.items()
+            if name in selected_set
+        }
     # ─────────────────────────────────────────────────────────────
 
     if 'method' not in config.keys():
