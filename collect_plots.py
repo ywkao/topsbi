@@ -22,20 +22,12 @@ tags = ["all", "pt_mass"]
 #--------------------------------------------------
 # tmp
 #--------------------------------------------------
-wcs = ["cQd8"]
-values = ["3.0"]
-tags = ["pt_mass"]
-feat = "pt_mass"
-nodes = ["n128", "n64", "n32"]
-lrSch = ["plateau", "cosine"]
+values = ["1.0", "3.0", "5.0"]
+tags = ["all", "top30"]
+nodes = ["n128"]
+lrSch = ["cosine"]
 
-# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/pt_mass_n64_dropout_plateau/cQd8/3.0/complete
-# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/pt_mass_n128_dropout_cosine
-# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/pt_mass_n128_dropout_plateau
-# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/pt_mass_n32_dropout_cosine
-# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/pt_mass_n32_dropout_plateau
-# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/pt_mass_n64_dropout_cosine
-# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/pt_mass_n64_dropout_plateau
+# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/all_n128_dropout_cosine/cQd1/5.0/complete/
 
 for tag in tags:
     for node in nodes:
