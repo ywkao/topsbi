@@ -103,8 +103,11 @@ def kinematic_histogram(x, params, epoch, learned_lr, true_lr, outname, ylim=Non
     ax[0].errorbar((bins[:-1] + bins[1:])/2, n_correct, yerr=cErr,ecolor='C0', fmt='none')  
 
 
-    ratio = np.divide(n_learned, n_correct, where=(n_correct > 0))
-    rErr = ratio * np.sqrt(np.divide(lErr, n_learned, where=(n_learned > 0))**2 + np.divide(cErr, n_correct, where=(n_correct > 0))**2)
+    ratio = np.divide(n_learned, n_correct, where=(n_correct > 0), out=np.zeros_like(n_learned, dtype=float))
+    rErr = ratio * np.sqrt(
+        np.divide(lErr, n_learned, where=(n_learned > 0), out=np.zeros_like(lErr, dtype=float))**2 +
+        np.divide(cErr, n_correct, where=(n_correct > 0), out=np.zeros_like(cErr, dtype=float))**2
+    )
 
 
     ax[1].plot((bins[:-1] + bins[1:])/2, ratio, '.k') 
