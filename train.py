@@ -76,6 +76,7 @@ def main(config):
     batches   = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_feats, train_p0, train_p1), 
                                             batch_size=config['batchSize'], shuffle=True, num_workers=0)
     model     = Model(nFeatures=train_feats.shape[1], method=config['method'], device=config['device'], config=config['network'], seed=config['seed'])
+    norm_test = norm_test.to(model.device)
     optimizer = torch.optim.Adam(model.net.parameters(), lr=config['learningRate'])
 
     scheduler_type = config.get('scheduler', 'plateau')
