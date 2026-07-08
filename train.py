@@ -2,7 +2,7 @@ from topsbi.model.net import Model
 from topsbi.tools.plots import networkPlots, kinematic_histogram, animate_plots
 from topsbi.tools.data import parameterize_weights, prepare_features, get_probabilities
 
-import argparse, glob, os, tqdm, torch, yaml
+import argparse, glob, os, tqdm, torch, wandb, yaml
 
 from .schema import FEATURE_NAMES
 
@@ -119,6 +119,15 @@ def main(config):
     lrHistory = [optimizer.param_groups[0]['lr']]
     testLoss  = [model.loss(norm_test, test_p0, test_p1).item()]
 
+    use_wandb = config.get('wandb', True)
+    if use_wandb:
+        wandb.init(
+            project=config.get('wandb_project', 'topsbi'),
+            name=os.path.basename(config['name'].rstrip('/')),
+            config=config,
+        )
+        wandb.log({'train_loss': trainLoss[0], 'test_loss': testLoss[0], 'lr': lrHistory[0]}, step=0)
+
     os.makedirs(f'{config["name"]}/complete/animations', exist_ok=True)
     os.makedirs(f'{config["name"]}/complete/kinematics', exist_ok=True)
     for feature in features_config.keys():
@@ -173,15 +182,34 @@ def main(config):
             patience_count = 0
         else:
             patience_count += 1
-            if patience_count >= patience:
-                print(f"[INFO] early stopping at epoch {epoch}, best epoch was {best_epoch} (test loss {best_test_loss:.4f})")
-                break
+
+        if use_wandb:
+            wandb.log({
+                'train_loss': trainLoss[-1],
+                'test_loss': current_test_loss,
+                'best_test_loss': best_test_loss,
+                'lr': lrHistory[-1],
+            }, step=epoch + 1)
+
+        if patience_count >= patience:
+            print(f"[INFO] early stopping at epoch {epoch}, best epoch was {best_epoch} (test loss {best_test_loss:.4f})")
+            break
 
     if best_state is not None:
         model.net.load_state_dict(best_state)
         print(f"[INFO] restored best checkpoint from epoch {best_epoch}")
 
+    if use_wandb:
+        wandb.summary['best_epoch']     = best_epoch
+        wandb.summary['best_test_loss'] = best_test_loss
+
     networkPlots(test_feats, test_p0, test_p1, model.net, trainLoss, testLoss, f'{config["name"]}/complete', lr_history=lrHistory)
+
+    if use_wandb:
+        for plotName in ['loss.png', 'lossLog.png', 'roc.png', 'netOut.png']:
+            path = f'{config["name"]}/complete/{plotName}'
+            if os.path.exists(path):
+                wandb.log({plotName: wandb.Image(path)})
 
     # keep the best model for validation
     torch.save(model.net.state_dict(), f'{config["name"]}/model.pt')
@@ -198,6 +226,9 @@ def main(config):
                             f'{config["name"]}/complete/kinematics/{feature}.png', ylim=ylim, epoch_title=False)
         plots = sorted(glob.glob(f'{config["name"]}/incomplete/kinematics/{feature}/*.png'))
         animate_plots(plots, f'{config["name"]}/complete/animations/{feature}.gif')
+
+    if use_wandb:
+        wandb.finish()
 
     return config
 

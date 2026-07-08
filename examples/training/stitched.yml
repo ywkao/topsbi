@@ -36,44 +36,44 @@ c1:
 - 0.0
 - 0.0
 cg:
-- 1.0
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- -0.5
-- -0.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
+- 1.0    # SM
+- -0.5   # ctGIm
+- -0.5   # ctGRe
+- 1.5    # cQj38
+- 1.5    # cQj18
+- 1.5    # cQu8
+- 1.5    # cQd8
+- 1.5    # ctj8
+- 1.5    # ctu8
+- 1.5    # ctd8
+- 1.5    # cQj31
+- 1.5    # cQj11
+- 1.5    # cQu1
+- 1.5    # cQd1
+- 1.5    # ctj1
+- 1.5    # ctu1
+- 1.5    # ctd1
 features: all
 data: /eos/cms/store/user/ykao/topsbi/pretraining/
 device: cuda 
 cr:
-- 1.0
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- -0.5
-- -0.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
-- 1.5
+- 1.0    # SM
+- -0.5   # ctGIm
+- -0.5   # ctGRe
+- 1.5    # cQj38
+- 1.5    # cQj18
+- 1.5    # cQu8
+- 1.5    # cQd8
+- 1.5    # ctj8
+- 1.5    # ctu8
+- 1.5    # ctd8
+- 1.5    # cQj31
+- 1.5    # cQj11
+- 1.5    # cQu1
+- 1.5    # cQd1
+- 1.5    # ctj1
+- 1.5    # ctu1
+- 1.5    # ctd1
 epochs: 100
 learningRate: 0.001
 scheduler: plateau   # 'plateau' (default) | 'cosine' | 'none'
