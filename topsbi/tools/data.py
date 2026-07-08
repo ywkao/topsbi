@@ -74,13 +74,13 @@ def get_probabilities(
     # Ensure O(1) per-event weight, avoid double "divide by N" (p0 /= p0.sum())
     # interacting with BCELoss(reduction='mean')
     # Effectively, use division by mean (from Nick)
-    p0 /= p0.mean()
-    p1 /= p1.mean()
+    p0 /= p0.sum()
+    p1 /= p1.sum()
 
     if ('cr' in config.keys()) and (config['cr'] is not None):
         print(f'Reference hypothesis set. Calculating likelihood ratio with respect to \n    {config["cr"]}')
         pr  = coefs@expand_array(config['cr'])
-        pr /= pr.mean()
+        pr /= pr.sum()
         p0 /= pr
         p1 /= pr
     return p0, p1
