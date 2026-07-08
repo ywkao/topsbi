@@ -1,40 +1,20 @@
-from sklearn.metrics import roc_curve, roc_auc_score
+import torch
 
-import numpy as np
+from numpy import linspace, trapz
 
-def netEval(s, p0, p1):
-    """
-    Compute weighted ROC curve metrics for network output.
 
-    Args:
-        s:  network output scores in [0, 1], shape (N,)
-        p0: event weights under c0 (background), shape (N,)
-        p1: event weights under c1 (signal), shape (N,)
-    Returns:
-        fpr: false positive rates
-        tpr: true positive rates
-        auc: area under ROC curve
-        acc: weighted accuracy at threshold 0.5
-    """
-    scores  = np.concatenate([s,  s])
-    labels  = np.concatenate([np.zeros(len(s)), np.ones(len(s))])
-    weights = np.concatenate([p0, p1])
+def netEval(netOut, bWeights, sWeights, threshold=0.5, nPoints=200):
+    bins = linspace(netOut.min(), netOut.max(), nPoints + 1)
 
-    # print(weights.min(), weights.max(), (weights < 0).sum())
-    # print(np.isnan(scores).any(), np.isinf(scores).any())
+    bTotal = bWeights.sum()
+    sTotal = sWeights.sum()
 
-    weights = np.clip(weights, 0, None)
-    # print("neg:", (weights < 0).sum())
-    # print("zero:", (weights == 0).sum())
-    # print("nan/inf in scores:", np.isnan(scores).any(), np.isinf(scores).any())
-    # print("nan in labels:", np.isnan(labels).any())
-    # print("scores dtype:", scores.dtype)
+    tpr = []; fpr = []
+    for i in range(len(bins)):
+        tpr += [(sWeights[(netOut >= bins[-(i+1)]).ravel()].sum()/sTotal).item()]
+        fpr += [(bWeights[(netOut >= bins[-(i+1)]).ravel()].sum()/bTotal).item()]
 
-    fpr, tpr, _ = roc_curve(labels, scores, sample_weight=weights)
-    auc         = roc_auc_score(labels, scores, sample_weight=weights)
+    a = ((sWeights[netOut >= threshold].sum() + bWeights[netOut <= threshold].sum())/(bTotal + sTotal)).item()
+    auc = trapz(tpr, x=fpr).item()
 
-    preds   = (scores >= 0.5).astype(int)
-    correct = (preds == labels).astype(float)
-    acc     = np.average(correct, weights=weights)
-
-    return fpr, tpr, auc, acc
+    return fpr, tpr, auc, a
