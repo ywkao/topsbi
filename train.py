@@ -2,9 +2,14 @@ from topsbi.model.net import Model
 from topsbi.tools.plots import networkPlots, kinematic_histogram, animate_plots
 from topsbi.tools.data import parameterize_weights, prepare_features, get_probabilities
 
-import argparse, glob, os, tqdm, torch, wandb, yaml
+import argparse, glob, math, os, tqdm, torch, wandb, yaml
 
 from .schema import FEATURE_NAMES
+
+def check_loss(name, value, epoch):
+    """Warn if a loss value is non-finite or non-positive (signals training instability)."""
+    if not math.isfinite(value) or value <= 0:
+        print(f"[WARNING] {name} at epoch {epoch} is non-finite or non-positive: {value}")
 
 def get_feature_indices(config):
     """
@@ -155,6 +160,7 @@ def main(config):
                 kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes], 
                                     f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylim)
         trainLoss.append(model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item())
+        check_loss('train_loss', trainLoss[-1], epoch)
         if epoch%50 == 0:
             networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss, 
                          testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
@@ -166,6 +172,7 @@ def main(config):
 
         current_test_loss = model.loss(test_feats, test_p0, test_p1).item()
         testLoss.append(current_test_loss)
+        check_loss('test_loss', current_test_loss, epoch)
 
         if scheduler is not None:
             if scheduler_type == 'plateau':
