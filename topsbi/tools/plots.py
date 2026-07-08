@@ -12,6 +12,18 @@ import os, torch, yaml, hist
 
 
 
+def _safe_savefig(fig, path):
+    """
+    Save a figure, warning instead of raising if matplotlib can't render it
+    (e.g. a log-scaled axis with no positive data). A bad diagnostic plot
+    shouldn't abort a training run.
+    """
+    try:
+        fig.savefig(path)
+    except Exception as e:
+        print(f'[WARNING] failed to save {path}: {e}')
+
+
 def animate_plots(plots, outname, fps=5):
     """
     Create an animation from a list of plots.
@@ -118,12 +130,12 @@ def kinematic_histogram(x, params, epoch, learned_lr, true_lr, outname, ylim=Non
     ax[0].legend()
     if ylim is None:
         ylim = ax[0].get_ylim()
-        fig.savefig(outname)
+        _safe_savefig(fig, outname)
         plt.close(fig)
         return ylim
     else:
         ax[0].set_ylim(ylim)
-        fig.savefig(outname)
+        _safe_savefig(fig, outname)
         plt.close(fig)
 
 def kinematicRatioPlot(
@@ -249,7 +261,7 @@ def kinematicRatioPlot(
     ax[0].set_xlim(params['min'], params['max'])
     ax[0].legend()
     if params['outname']:
-        fig.savefig(f'{params["outname"]}')
+        _safe_savefig(fig, f'{params["outname"]}')
         plt.clf()
         plt.close()
     else:
@@ -305,9 +317,9 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     fig, ax = plt.subplots()
     loss_curve(ax, train_loss, test_loss)
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
-    fig.savefig(f'{label}/loss.png')
+    _safe_savefig(fig, f'{label}/loss.png')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/lossLog.png')
+    _safe_savefig(fig, f'{label}/lossLog.png')
     plt.clf()
     plt.close()
 
@@ -315,7 +327,7 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
         fig, ax = plt.subplots()
         lr_curve(ax, lr_history)
         mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
-        fig.savefig(f'{label}/lr.png')
+        _safe_savefig(fig, f'{label}/lr.png')
         plt.clf()
         plt.close()
 
@@ -327,9 +339,9 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     ax.set_xlabel('Network Output')
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
     ax.legend()
-    fig.savefig(f'{label}/netOut.png')
+    _safe_savefig(fig, f'{label}/netOut.png')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/netOutLog.png')
+    _safe_savefig(fig, f'{label}/netOutLog.png')
     plt.clf()
     plt.close()
 
@@ -347,84 +359,84 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     ax.set_xlabel('False Positive Rate')
     ax.set_ylabel('True Positive Rate')
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
-    fig.savefig(f'{label}/roc.png')
+    _safe_savefig(fig, f'{label}/roc.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/rocLog.png')
+    _safe_savefig(fig, f'{label}/rocLog.png')
     plt.clf()
     plt.close()
 
     #check quantile binned s
     fig, ax = plt.subplots()
     performance['sChiExcl'] = sMeanPlot(ax, s, p0, p1, 1000, 0.01)
-    fig.savefig(f'{label}/sExcl.png')
+    _safe_savefig(fig, f'{label}/sExcl.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/sExclLog.png')
+    _safe_savefig(fig, f'{label}/sExclLog.png')
     plt.clf()
     plt.close()
 
     fig, ax = plt.subplots()
     performance['sChiIncl'] = sMeanPlot(ax, s, p0, p1, 1000, 0)
-    fig.savefig(f'{label}/sIncl.png')
+    _safe_savefig(fig, f'{label}/sIncl.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/sInclLog.png')
+    _safe_savefig(fig, f'{label}/sInclLog.png')
     plt.clf()
     plt.close()
 
     fig, ax = plt.subplots()
     sMeanPlot(ax, s, p0, p1, 50, 0.01)
-    fig.savefig(f'{label}/sExcl_lobin.png')
+    _safe_savefig(fig, f'{label}/sExcl_lobin.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/sExclLog_lobin.png')
+    _safe_savefig(fig, f'{label}/sExclLog_lobin.png')
     plt.clf()
     plt.close()
 
     fig, ax = plt.subplots()
     sMeanPlot(ax, s, p0, p1, 50, 0)
-    fig.savefig(f'{label}/sIncl_lobin.png')
+    _safe_savefig(fig, f'{label}/sIncl_lobin.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/sInclLog_lobin.png')
+    _safe_savefig(fig, f'{label}/sInclLog_lobin.png')
     plt.clf()
     plt.close()
     
     #check quantile binned lr
     fig, ax = plt.subplots()
     performance['lrChiExcl'] = lrMeanPlot(ax, predLr, p1/p0, p0, 1000, 0.01)
-    fig.savefig(f'{label}/lrExcl.png')
+    _safe_savefig(fig, f'{label}/lrExcl.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/lrExclLog.png')
+    _safe_savefig(fig, f'{label}/lrExclLog.png')
     plt.clf()
     plt.close()
 
     fig, ax = plt.subplots()
     performance['lrChiIncl'] = lrMeanPlot(ax, predLr, p1/p0, p0, 1000, 0)
-    fig.savefig(f'{label}/lrIncl.png')
+    _safe_savefig(fig, f'{label}/lrIncl.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/lrInclLog.png')
+    _safe_savefig(fig, f'{label}/lrInclLog.png')
     plt.clf()
     plt.close()
 
     fig, ax = plt.subplots()
     lrMeanPlot(ax, predLr, p1/p0, p0, 50, 0.01)
-    fig.savefig(f'{label}/lrExcl_lobin.png')
+    _safe_savefig(fig, f'{label}/lrExcl_lobin.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/lrExclLog_lobin.png')
+    _safe_savefig(fig, f'{label}/lrExclLog_lobin.png')
     plt.clf()
     plt.close()
 
     fig, ax = plt.subplots()
     lrMeanPlot(ax, predLr, p1/p0, p0, 50, 0)
-    fig.savefig(f'{label}/lrIncl_lobin.png')
+    _safe_savefig(fig, f'{label}/lrIncl_lobin.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    fig.savefig(f'{label}/lrInclLog_lobin.png')
+    _safe_savefig(fig, f'{label}/lrInclLog_lobin.png')
     plt.clf()
     plt.close()
 
@@ -445,14 +457,14 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
             fig, ax = plt.subplots()
             h = hist2d(ax, np.log10(predLr), np.log10((p1/p0)), p0, **{})
             fig.colorbar(h[3], ax=ax)
-            fig.savefig(f'{label}/hist2d.png')
+            _safe_savefig(fig, f'{label}/hist2d.png')
             plt.clf()
             plt.close()
         
             fig, ax = plt.subplots()
             h = hist2d(ax, np.log10(predLr), np.log10((p1/p0)), p0, logbins=True, **{})
             fig.colorbar(h[3], ax=ax)
-            fig.savefig(f'{label}/hist2dLog.png')
+            _safe_savefig(fig, f'{label}/hist2dLog.png')
             plt.clf()
             plt.close()
         except:
