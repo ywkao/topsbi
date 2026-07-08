@@ -15,6 +15,10 @@ log             = logs/$(Cluster).$(Process).log
 
 MY.SendCredential = True            # for writing in EOS
 
+# copies WANDB_API_KEY from your submit-shell env into the job's env;
+# export it yourself beforehand, e.g. `export WANDB_API_KEY=$(cat ~/.wandb_api_key)`
+getenv = WANDB_API_KEY
+
 # notification    = Never # Always / Complete / Error / Never
 # notify_user     = ykao@cern.ch
 # queue config matching files /eos/home-y/ykao/SWAN_projects/analysis/configs/*.yml
