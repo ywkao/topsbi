@@ -1,4 +1,5 @@
 import shutil
+from itertools import product
 from pathlib import Path
 
 wcs = [
@@ -27,32 +28,43 @@ tags = ["all", "top30"]
 nodes = ["n128"]
 lrSch = ["cosine"]
 
+# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/all_n128_dropout_cosine/
 # /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/all_n128_dropout_cosine/cQd1/5.0/complete/
+#
+# each .../complete/ dir now also contains per-feature plots in subfolders:
+#   complete/kinematics/<feature>.png
+#   complete/animations/<feature>.gif
+# these are collected the same way as the top-level pngs, just nested under
+# figures/kinematics/<feature>/... and figures/animations/<feature>/...
 
-for tag in tags:
-    for node in nodes:
-        for lr in lrSch:
-            for value in values:
-                src_dir_tmpl = "/eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/{tag}_{node}_dropout_{lr}/{wc}/{value}/complete"
-                dst_tmpl     = "/eos/user/y/ykao/www/topsbi/figures/{fig}/{wc}_value_{value}_feature_{tag}_node_{node}_lr_{lr}.png"
+subdirs = [(None, "*.png"), ("kinematics", "*.png"), ("animations", "*.gif")]
 
-                for wc in wcs:
-                    src_dir = Path(src_dir_tmpl.format(tag=tag, node=node, lr=lr, wc=wc, value=value))
+for tag, node, lr, value, wc in product(tags, nodes, lrSch, values, wcs):
+    src_dir_tmpl = "/eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/{tag}_{node}_dropout_{lr}/{wc}/{value}/complete"
+    dst_tmpl     = "/eos/user/y/ykao/www/topsbi/figures/{fig}/{wc}_value_{value}_feature_{tag}_node_{node}_lr_{lr}{ext}"
 
-                    if not src_dir.is_dir():
-                        print(f"[skip] source folder not found: {src_dir}")
-                        continue
+    complete_dir = Path(src_dir_tmpl.format(tag=tag, node=node, lr=lr, wc=wc, value=value))
 
-                    pngs = sorted(src_dir.glob("*.png"))
-                    if not pngs:
-                        print(f"[warn] no pngs in {src_dir}")
-                        continue
+    if not complete_dir.is_dir():
+        print(f"[skip] source folder not found: {complete_dir}")
+        continue
 
-                    for src in pngs:
-                        fig = src.stem
-                        dst = Path(dst_tmpl.format(tag=tag, fig=fig, wc=wc, value=value, node=node, lr=lr))
-                        dst.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(index_src, dst.parent / "index.php")
-                        shutil.copy2(src, dst)
+    for subdir, pattern in subdirs:
+        src_dir = complete_dir / subdir if subdir else complete_dir
+        if not src_dir.is_dir():
+            print(f"[skip] source folder not found: {src_dir}")
+            continue
 
-                    print(f"[ok] {wc}: {len(pngs)} figures copied")
+        files = sorted(src_dir.glob(pattern))
+        if not files:
+            print(f"[warn] no files matching {pattern} in {src_dir}")
+            continue
+
+        for src in files:
+            fig = f"{subdir}/{src.stem}" if subdir else src.stem
+            dst = Path(dst_tmpl.format(tag=tag, fig=fig, wc=wc, value=value, node=node, lr=lr, ext=src.suffix))
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(index_src, dst.parent / "index.php")
+            shutil.copy2(src, dst)
+
+        print(f"[ok] {wc} {subdir or 'top'}: {len(files)} figures copied")
