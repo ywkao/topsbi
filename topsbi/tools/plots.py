@@ -331,6 +331,13 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
         plt.clf()
         plt.close()
 
+    if s.size == 0:
+        print(f"[WARNING] {label}: network output is 1.0 for every event (saturated) "
+              "— skipping output/ROC/metrics plots")
+        with open(f'{label}/performance.yml', 'w') as f:
+            f.write(yaml.dump(performance))
+        return
+
     #plot the network output
     fig, ax = plt.subplots()
     bins = np.linspace(0,1,200)
