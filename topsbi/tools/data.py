@@ -80,7 +80,7 @@ def get_probabilities(
     if ('cr' in config.keys()) and (config['cr'] is not None):
         print(f'Reference hypothesis set. Calculating likelihood ratio with respect to \n    {config["cr"]}')
         pr  = coefs@expand_array(config['cr'])
-        pr /= pr.sum()
+        pr /= pr.mean()
         p0 /= pr
         p1 /= pr
     return p0, p1
