@@ -81,8 +81,28 @@ def get_probabilities(
         print(f'Reference hypothesis set. Calculating likelihood ratio with respect to \n    {config["cr"]}')
         pr  = coefs@expand_array(config['cr'])
         pr /= pr.mean()
+
+        eps      = 1e-3
+        n_neg    = (pr < 0).sum().item()
+        n_small  = (pr.abs() < eps).sum().item()
+        print(f'[DEBUG] pr stats: min={pr.min().item():.3e}, max={pr.max().item():.3e}, '
+              f'mean={pr.mean().item():.3e}, negative={n_neg}/{pr.numel()}, '
+              f'|pr|<{eps:g}={n_small}/{pr.numel()}')
+        if n_neg > 0 or n_small > 0:
+            print(f'[WARNING] pr has {n_neg} negative and {n_small} near-zero (|pr|<{eps:g}) '
+                  f'values out of {pr.numel()}; these would blow up p0/p1 under division. '
+                  f'Clamping pr to a minimum of {eps:g} before dividing.')
+
+        # pr should represent a (non-negative) reference cross section; negative or
+        # near-zero values are morphing-fit artifacts for individual events, not
+        # physical. Floor them so a handful of events can't dominate the loss.
+        pr = pr.clamp(min=eps)
+
         p0 /= pr
         p1 /= pr
+
+        print(f'[DEBUG] p0 after cr division: min={p0.min().item():.3e}, max={p0.max().item():.3e}')
+        print(f'[DEBUG] p1 after cr division: min={p1.min().item():.3e}, max={p1.max().item():.3e}')
     return p0, p1
 
 def prepare_features(
