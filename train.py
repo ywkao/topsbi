@@ -170,7 +170,7 @@ def main(config):
             loss.backward()
             optimizer.step()
 
-        current_test_loss = model.loss(test_feats, test_p0, test_p1).item()
+        current_test_loss = model.loss(norm_test, test_p0, test_p1).item()
         testLoss.append(current_test_loss)
         check_loss('test_loss', current_test_loss, epoch)
 
@@ -210,7 +210,7 @@ def main(config):
         wandb.summary['best_epoch']     = best_epoch
         wandb.summary['best_test_loss'] = best_test_loss
 
-    networkPlots(test_feats, test_p0, test_p1, model.net, trainLoss, testLoss, f'{config["name"]}/complete', lr_history=lrHistory)
+    networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss, testLoss, f'{config["name"]}/complete', lr_history=lrHistory)
 
     if use_wandb:
         for plotName in ['loss.png', 'lossLog.png', 'roc.png', 'netOut.png']:
