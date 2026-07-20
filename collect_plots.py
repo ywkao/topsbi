@@ -15,16 +15,9 @@ fig_root  = Path("/eos/user/y/ykao/www/topsbi/figures")
 fig_root.mkdir(parents=True, exist_ok=True)
 shutil.copy2(index_src, fig_root / "index.php")
 
-# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/all/ctu8/3.0/complete
-
+wcs = ["ctGRe", "ctj1", "cQj31"]
 values = ["1.0", "3.0", "5.0"]
-tags = ["all", "pt_mass"]
-
-#--------------------------------------------------
-# tmp
-#--------------------------------------------------
-values = ["1.0", "3.0", "5.0"]
-tags = ["all", "top30"]
+tags = ["all", "compact", "lowlevel", "highlevel"]
 nodes = ["n128"]
 lrSch = ["cosine"]
 
