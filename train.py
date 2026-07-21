@@ -167,14 +167,6 @@ def main(config):
                 else:
                     kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
                                         f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylim)
-        model.net.eval()
-        with torch.no_grad():
-            trainLoss.append(model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item())
-        model.net.train()
-        check_loss('train_loss', trainLoss[-1], epoch)
-        if not skip_plots and epoch % 50 == 0:
-            networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss,
-                         testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
         for train_feats, train_p0, train_p1 in batches:
             optimizer.zero_grad()
             loss = model.loss(train_feats, train_p0, train_p1)
@@ -183,10 +175,15 @@ def main(config):
 
         model.net.eval()
         with torch.no_grad():
+            trainLoss.append(model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item())
             current_test_loss = model.loss(norm_test, test_p0, test_p1).item()
         model.net.train()
         testLoss.append(current_test_loss)
+        check_loss('train_loss', trainLoss[-1], epoch)
         check_loss('test_loss', current_test_loss, epoch)
+        if not skip_plots and epoch % 50 == 0:
+            networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss,
+                         testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
 
         if scheduler is not None:
             if scheduler_type == 'plateau':
