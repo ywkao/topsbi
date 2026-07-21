@@ -91,7 +91,10 @@ def main(config):
                                             batch_size=config['batchSize'], shuffle=True, num_workers=0)
     model     = Model(nFeatures=train_feats.shape[1], method=config['method'], device=config['device'], config=config['network'], seed=config['seed'])
     norm_test = norm_test.to(model.device)
-    optimizer = torch.optim.Adam(model.net.parameters(), lr=config['learningRate'])
+    opt_cls   = getattr(torch.optim, config.get('optimizer', 'Adam'))
+    optimizer = opt_cls(model.net.parameters(),
+                        lr=config['learningRate'],
+                        weight_decay=config.get('weight_decay', 0.0))
 
     scheduler_type = config.get('scheduler', 'plateau')
     if scheduler_type == 'plateau':
@@ -127,7 +130,8 @@ def main(config):
     model.net.train()
     lrHistory = [optimizer.param_groups[0]['lr']]
 
-    use_wandb = config.get('wandb', True)
+    use_wandb  = config.get('wandb', True)
+    skip_plots = config.get('skipPlots', False)  # ponytail: kill per-epoch PNGs for HP tuning
     if use_wandb:
         wandb.init(
             project=config.get('wandb_project', 'topsbi'),
@@ -150,24 +154,25 @@ def main(config):
 
     print("[INFO] starting networkPlots for every 50 epochs...")
     for epoch in tqdm.tqdm(range(config['epochs'])):
-        s  = model.net(norm_test).cpu().detach().numpy().flatten()
-        noOnes = s != 1
-        s = s[noOnes]
-        lr = s / (1 - s)
-        tlr = (test_p1/test_p0).detach().cpu().numpy().flatten()
-        for feature, params in features_config.items():
-            if epoch == 0:
-                ylim = kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes], 
-                                           f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png')
-            else: 
-                kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes], 
-                                    f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylim)
+        if not skip_plots:
+            s  = model.net(norm_test).cpu().detach().numpy().flatten()
+            noOnes = s != 1
+            s = s[noOnes]
+            lr = s / (1 - s)
+            tlr = (test_p1/test_p0).detach().cpu().numpy().flatten()
+            for feature, params in features_config.items():
+                if epoch == 0:
+                    ylim = kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
+                                               f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png')
+                else:
+                    kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
+                                        f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylim)
         model.net.eval()
         with torch.no_grad():
             trainLoss.append(model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item())
         model.net.train()
         check_loss('train_loss', trainLoss[-1], epoch)
-        if epoch%50 == 0:
+        if not skip_plots and epoch % 50 == 0:
             networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss,
                          testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
         for train_feats, train_p0, train_p1 in batches:
@@ -219,7 +224,8 @@ def main(config):
         wandb.summary['best_epoch']     = best_epoch
         wandb.summary['best_test_loss'] = best_test_loss
 
-    networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss, testLoss, f'{config["name"]}/complete', lr_history=lrHistory)
+    if not skip_plots:
+        networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss, testLoss, f'{config["name"]}/complete', lr_history=lrHistory)
 
     if use_wandb:
         for plotName in ['loss.png', 'lossLog.png', 'roc.png', 'netOut.png']:
@@ -230,27 +236,28 @@ def main(config):
     # keep the best model for validation
     torch.save(model.net.state_dict(), f'{config["name"]}/model.pt')
 
-    s  = model.net(norm_test).cpu().detach().numpy().flatten()
-    noOnes = s != 1
-    s = s[noOnes]
-    lr = s / (1 - s)
-    tlr = (test_p1/test_p0).detach().cpu().numpy().flatten()
-    for feature, params in features_config.items():
-        kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes], 
-                            f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylim)
-        kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes], 
-                            f'{config["name"]}/complete/kinematics/{feature}.png', ylim=ylim, epoch_title=False)
-        plots = sorted(glob.glob(f'{config["name"]}/incomplete/kinematics/{feature}/*.png'))
-        animate_plots(plots, f'{config["name"]}/complete/animations/{feature}.gif')
+    if not skip_plots:
+        s  = model.net(norm_test).cpu().detach().numpy().flatten()
+        noOnes = s != 1
+        s = s[noOnes]
+        lr = s / (1 - s)
+        tlr = (test_p1/test_p0).detach().cpu().numpy().flatten()
+        for feature, params in features_config.items():
+            kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
+                                f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylim)
+            kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
+                                f'{config["name"]}/complete/kinematics/{feature}.png', ylim=ylim, epoch_title=False)
+            plots = sorted(glob.glob(f'{config["name"]}/incomplete/kinematics/{feature}/*.png'))
+            animate_plots(plots, f'{config["name"]}/complete/animations/{feature}.gif')
 
     if use_wandb:
         wandb.finish()
 
-    return config
+    return config, best_test_loss
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('config', help='configuration yml file used for training')
     with open(parser.parse_args().config, 'r') as f:
         config = yaml.safe_load(f)
-    config = main(config)
+    main(config)
