@@ -120,9 +120,12 @@ def main(config):
         scheduler = None
         print("[INFO] scheduler: none")
 
-    trainLoss = [model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item()]
+    model.net.eval()
+    with torch.no_grad():
+        trainLoss = [model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item()]
+        testLoss  = [model.loss(norm_test, test_p0, test_p1).item()]
+    model.net.train()
     lrHistory = [optimizer.param_groups[0]['lr']]
-    testLoss  = [model.loss(norm_test, test_p0, test_p1).item()]
 
     use_wandb = config.get('wandb', True)
     if use_wandb:
@@ -159,10 +162,13 @@ def main(config):
             else: 
                 kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes], 
                                     f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylim)
-        trainLoss.append(model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item())
+        model.net.eval()
+        with torch.no_grad():
+            trainLoss.append(model.loss(batches.dataset[:][0], batches.dataset[:][1], batches.dataset[:][2]).item())
+        model.net.train()
         check_loss('train_loss', trainLoss[-1], epoch)
         if epoch%50 == 0:
-            networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss, 
+            networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss,
                          testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
         for train_feats, train_p0, train_p1 in batches:
             optimizer.zero_grad()
@@ -170,7 +176,10 @@ def main(config):
             loss.backward()
             optimizer.step()
 
-        current_test_loss = model.loss(norm_test, test_p0, test_p1).item()
+        model.net.eval()
+        with torch.no_grad():
+            current_test_loss = model.loss(norm_test, test_p0, test_p1).item()
+        model.net.train()
         testLoss.append(current_test_loss)
         check_loss('test_loss', current_test_loss, epoch)
 
