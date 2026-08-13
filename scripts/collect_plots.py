@@ -1,3 +1,4 @@
+import csv
 import shutil
 from itertools import product
 from pathlib import Path
@@ -11,7 +12,6 @@ wcs = [
 index_src = Path("/eos/user/y/ykao/www/topsbi/index.php")
 fig_root  = Path("/eos/user/y/ykao/www/topsbi/figures")
 
-# put index_src under figures/
 fig_root.mkdir(parents=True, exist_ok=True)
 shutil.copy2(index_src, fig_root / "index.php")
 
@@ -21,16 +21,9 @@ tags = ["all", "compact", "lowlevel", "highlevel"]
 nodes = ["n128"]
 lrSch = ["cosine"]
 
-# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/all_n128_dropout_cosine/
-# /eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/all_n128_dropout_cosine/cQd1/5.0/complete/
-#
-# each .../complete/ dir now also contains per-feature plots in subfolders:
-#   complete/kinematics/<feature>.png
-#   complete/animations/<feature>.gif
-# these are collected the same way as the top-level pngs, just nested under
-# figures/kinematics/<feature>/... and figures/animations/<feature>/...
-
 subdirs = [(None, "*.png"), ("kinematics", "*.png"), ("animations", "*.gif")]
+
+manifest = []  # <-- 新增:收集每張圖的 metadata
 
 for tag, node, lr, value, wc in product(tags, nodes, lrSch, values, wcs):
     src_dir_tmpl = "/eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/{tag}_{node}_dropout_{lr}/{wc}/{value}/complete"
@@ -60,4 +53,27 @@ for tag, node, lr, value, wc in product(tags, nodes, lrSch, values, wcs):
             shutil.copy2(index_src, dst.parent / "index.php")
             shutil.copy2(src, dst)
 
+            # <-- 新增:只記錄 png(gif 不能被 pdflatex 讀,latex 頁面用不到)
+            if src.suffix.lower() == ".png":
+                manifest.append({
+                    "fig": fig,
+                    "wc": wc,
+                    "value": value,
+                    "tag": tag,
+                    "node": node,
+                    "lr": lr,
+                    "path": str(dst.relative_to(fig_root)),
+                })
+
         print(f"[ok] {wc} {subdir or 'top'}: {len(files)} figures copied")
+
+# ---- 輸出 manifest ----
+manifest_path = fig_root / "manifest.csv"
+if manifest:
+    with open(manifest_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=manifest[0].keys())
+        writer.writeheader()
+        writer.writerows(manifest)
+    print(f"[ok] manifest written: {manifest_path} ({len(manifest)} entries)")
+else:
+    print("[warn] manifest empty, nothing written")
