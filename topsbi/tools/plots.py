@@ -19,7 +19,7 @@ def _safe_savefig(fig, path):
     shouldn't abort a training run.
     """
     try:
-        fig.savefig(path)
+        fig.savefig(path, bbox_inches=None)
     except Exception as e:
         print(f'[WARNING] failed to save {path}: {e}')
 
