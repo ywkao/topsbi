@@ -1,41 +1,25 @@
-import csv
 import shutil
 from itertools import product
 from pathlib import Path
 
-wcs = [
-    "cQd1", "cQd8", "cQj11", "cQj18", "cQj31", "cQj38",
-    "cQu1", "cQu8", "ctd1", "ctd8", "ctGIm", "ctGRe",
-    "ctj1", "ctj8", "ctu1", "ctu8",
-]
+from config import (
+    WCS, VALUES, TAGS, NODES, LRSCH,
+    SRC_ROOT, INDEX_SRC, FIG_ROOT, SUBDIRS,
+)
 
-index_src = Path("/eos/user/y/ykao/www/topsbi/index.php")
-fig_root  = Path("/eos/user/y/ykao/www/topsbi/figures")
+FIG_ROOT.mkdir(parents=True, exist_ok=True)
+shutil.copy2(INDEX_SRC, FIG_ROOT / "index.php")
 
-fig_root.mkdir(parents=True, exist_ok=True)
-shutil.copy2(index_src, fig_root / "index.php")
+manifest = []
 
-wcs = ["ctGRe", "ctj1", "cQj31"]
-values = ["1.0", "3.0", "5.0"]
-tags = ["all", "compact", "lowlevel", "highlevel"]
-nodes = ["n128"]
-lrSch = ["cosine"]
-
-subdirs = [(None, "*.png"), ("kinematics", "*.png"), ("animations", "*.gif")]
-
-manifest = []  # <-- 新增:收集每張圖的 metadata
-
-for tag, node, lr, value, wc in product(tags, nodes, lrSch, values, wcs):
-    src_dir_tmpl = "/eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/{tag}_{node}_dropout_{lr}/{wc}/{value}/complete"
-    dst_tmpl     = "/eos/user/y/ykao/www/topsbi/figures/{fig}/{wc}_value_{value}_feature_{tag}_node_{node}_lr_{lr}{ext}"
-
-    complete_dir = Path(src_dir_tmpl.format(tag=tag, node=node, lr=lr, wc=wc, value=value))
+for tag, node, lr, value, wc in product(TAGS, NODES, LRSCH, VALUES, WCS):
+    complete_dir = SRC_ROOT / f"{tag}_{node}_dropout_{lr}" / wc / value / "complete"
 
     if not complete_dir.is_dir():
         print(f"[skip] source folder not found: {complete_dir}")
         continue
 
-    for subdir, pattern in subdirs:
+    for subdir, pattern in SUBDIRS:
         src_dir = complete_dir / subdir if subdir else complete_dir
         if not src_dir.is_dir():
             print(f"[skip] source folder not found: {src_dir}")
@@ -48,27 +32,22 @@ for tag, node, lr, value, wc in product(tags, nodes, lrSch, values, wcs):
 
         for src in files:
             fig = f"{subdir}/{src.stem}" if subdir else src.stem
-            dst = Path(dst_tmpl.format(tag=tag, fig=fig, wc=wc, value=value, node=node, lr=lr, ext=src.suffix))
+            dst = FIG_ROOT / fig / f"{wc}_value_{value}_feature_{tag}_node_{node}_lr_{lr}{src.suffix}"
             dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(index_src, dst.parent / "index.php")
+            shutil.copy2(INDEX_SRC, dst.parent / "index.php")
             shutil.copy2(src, dst)
 
-            # <-- 新增:只記錄 png(gif 不能被 pdflatex 讀,latex 頁面用不到)
             if src.suffix.lower() == ".png":
                 manifest.append({
-                    "fig": fig,
-                    "wc": wc,
-                    "value": value,
-                    "tag": tag,
-                    "node": node,
-                    "lr": lr,
-                    "path": str(dst.relative_to(fig_root)),
+                    "fig": fig, "wc": wc, "value": value,
+                    "tag": tag, "node": node, "lr": lr,
+                    "path": str(dst.relative_to(FIG_ROOT)),
                 })
 
         print(f"[ok] {wc} {subdir or 'top'}: {len(files)} figures copied")
 
-# ---- 輸出 manifest ----
-manifest_path = fig_root / "manifest.csv"
+import csv
+manifest_path = FIG_ROOT / "manifest.csv"
 if manifest:
     with open(manifest_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=manifest[0].keys())
