@@ -11,6 +11,71 @@ def check_loss(name, value, epoch):
     if not math.isfinite(value) or value <= 0:
         print(f"[WARNING] {name} at epoch {epoch} is non-finite or non-positive: {value}")
 
+def sanitize_events(feats, p0, p1, config, split_name):
+    """
+    Reject unphysical / pathological events that come from morphing-fit artifacts.
+
+    Two filters (both controllable via config['sanitize']):
+      1. reject_negative (default True): drop events with p0 <= 0 or p1 <= 0.
+         Negative weights are morphing numerical artifacts, not physical
+         probabilities, and give ill-defined likelihood ratios.
+      2. lr_cap (default 1000): drop events whose likelihood ratio p1/p0
+         falls outside [1/lr_cap, lr_cap]. Extreme LR values are dominated
+         by morphing artifacts (a handful of events with pr -> 0 in the
+         reference hypothesis) rather than physics, and their contribution
+         to BCE loss can be O(20x) larger than a typical event.
+         Set to None or <= 0 to disable.
+
+    The mask is applied consistently to feats, p0, p1 so downstream
+    normalization / DataLoader construction stays coherent.
+
+    Args:
+        feats: [N, F] tensor of per-event features
+        p0:    [N]    tensor of event weights under hypothesis c0
+        p1:    [N]    tensor of event weights under hypothesis c1
+        config: main config dict; reads config['sanitize']
+        split_name: 'train' or 'test', used only for log messages
+    Returns:
+        (feats, p0, p1, mask) — filtered tensors and the boolean mask used
+    """
+    sanitize_cfg    = config.get('sanitize', {}) or {}
+    reject_negative = sanitize_cfg.get('reject_negative', True)
+    lr_cap          = sanitize_cfg.get('lr_cap', 1000)
+
+    n_before = p0.shape[0]
+    mask     = torch.ones(n_before, dtype=torch.bool, device=p0.device)
+
+    # --- filter 1: non-positive weights ---------------------------------
+    if reject_negative:
+        physical = (p0 > 0) & (p1 > 0)
+        n_bad    = int((~physical).sum().item())
+        if n_bad > 0:
+            n_p0_bad = int((p0 <= 0).sum().item())
+            n_p1_bad = int((p1 <= 0).sum().item())
+            print(f"[SANITIZE-{split_name}] rejecting {n_bad}/{n_before} events "
+                  f"with non-positive weights (p0<=0: {n_p0_bad}, p1<=0: {n_p1_bad})")
+        mask &= physical
+
+    # --- filter 2: extreme likelihood ratio -----------------------------
+    if lr_cap is not None and lr_cap > 0:
+        # only compute LR on events already passing filter 1 to avoid div-by-zero
+        safe_p0 = torch.where(p0 > 0, p0, torch.ones_like(p0))
+        lr      = p1 / safe_p0
+        sane_lr = (lr > 1.0 / lr_cap) & (lr < lr_cap)
+        n_before_lr = int(mask.sum().item())
+        combined    = mask & sane_lr
+        n_lr_reject = n_before_lr - int(combined.sum().item())
+        if n_lr_reject > 0:
+            print(f"[SANITIZE-{split_name}] rejecting {n_lr_reject} additional events "
+                  f"with LR = p1/p0 outside [{1.0/lr_cap:.2e}, {lr_cap:.2e}]")
+        mask = combined
+
+    n_after = int(mask.sum().item())
+    frac    = 100.0 * n_after / max(n_before, 1)
+    print(f"[SANITIZE-{split_name}] kept {n_after}/{n_before} events ({frac:.3f}%)")
+
+    return feats[mask], p0[mask], p1[mask], mask
+
 def get_feature_indices(config):
     """
     回傳要使用的 feature indices。
@@ -81,6 +146,18 @@ def main(config):
     test_coefs  = None
     train_coefs = None
 
+    # ── Fix 1: reject morphing-artifact events ─────────────────────────
+    # Rare events with negative weights or extreme LR (from pr -> 0 in the
+    # reference hypothesis) can dominate BCE loss and destabilize training.
+    # This filters them out consistently across feats / p0 / p1.
+    # Config knobs: sanitize.reject_negative (bool), sanitize.lr_cap (float).
+    print("[INFO] sanitizing events (Fix 1: reject unphysical / extreme-LR events)...")
+    train_feats, train_p0, train_p1, _ = sanitize_events(
+        train_feats, train_p0, train_p1, config, 'train')
+    test_feats,  test_p0,  test_p1,  _ = sanitize_events(
+        test_feats,  test_p0,  test_p1,  config, 'test')
+    # ───────────────────────────────────────────────────────────────────
+
     print("[INFO] preparing training features...")
     train_means = train_feats.mean(0)
     train_stds  = train_feats.std(0)
@@ -95,6 +172,33 @@ def main(config):
     optimizer = opt_cls(model.net.parameters(),
                         lr=config['learningRate'],
                         weight_decay=config.get('weight_decay', 0.0))
+
+    #----------------------------------------------------------------------------------------------------
+    # DEBUG
+    #----------------------------------------------------------------------------------------------------
+    import numpy as np
+    train_p0_np = batches.dataset[:][1].cpu().numpy()
+    train_p1_np = batches.dataset[:][2].cpu().numpy()
+    test_p0_np  = test_p0.cpu().numpy()
+    test_p1_np  = test_p1.cpu().numpy()
+    
+    for name, p0, p1 in [('train', train_p0_np, train_p1_np),
+                         ('test',  test_p0_np,  test_p1_np)]:
+        lr = p1 / (p0 + 1e-10)
+        print(f"\n=== {name} (N={len(p0)}) ===")
+        print(f"p0:  min={p0.min():.3e}  max={p0.max():.3e}  "
+              f"p99={np.percentile(p0,99):.3e}  p99.99={np.percentile(p0,99.99):.3e}")
+        print(f"p1:  min={p1.min():.3e}  max={p1.max():.3e}  "
+              f"p99={np.percentile(p1,99):.3e}  p99.99={np.percentile(p1,99.99):.3e}")
+        print(f"lr:  min={lr.min():.3e}  max={lr.max():.3e}  "
+              f"p99={np.percentile(lr,99):.3e}  p99.99={np.percentile(lr,99.99):.3e}")
+        # 看有多少 event 的 weight 是「clamp-affected」的
+        # 也就是 clamp 前 pr 應該很小的那批
+        heavy = (p0 > np.percentile(p0, 99.9)) | (p1 > np.percentile(p1, 99.9))
+        print(f"top 0.1% weight events: {heavy.sum()}  "
+              f"貢獻 sum(p0)={p0[heavy].sum()/p0.sum()*100:.1f}%, "
+              f"sum(p1)={p1[heavy].sum()/p1.sum()*100:.1f}%")
+    #----------------------------------------------------------------------------------------------------
 
     scheduler_type = config.get('scheduler', 'plateau')
     if scheduler_type == 'plateau':
