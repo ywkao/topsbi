@@ -15,7 +15,7 @@ def sanitize_events(feats, p0, p1, config, split_name):
     """
     Reject unphysical / pathological events that come from morphing-fit artifacts.
 
-    Two filters (both controllable via config['sanitize']):
+    Three filters (all controllable via config['sanitize']):
       1. reject_negative (default True): drop events with p0 <= 0 or p1 <= 0.
          Negative weights are morphing numerical artifacts, not physical
          probabilities, and give ill-defined likelihood ratios.
@@ -24,6 +24,13 @@ def sanitize_events(feats, p0, p1, config, split_name):
          by morphing artifacts (a handful of events with pr -> 0 in the
          reference hypothesis) rather than physics, and their contribution
          to BCE loss can be O(20x) larger than a typical event.
+         Set to None or <= 0 to disable.
+      3. weight_cap (default 100): drop events where max(p0, p1) > weight_cap.
+         Since p0 and p1 are normalized to mean=1, a single event with
+         p0=1000 contributes as much to loss/gradient as 1000 typical events.
+         Even when its LR looks reasonable, such an event will dominate
+         training statistics and create train/test loss asymmetry (train
+         is more likely to sample these rare high-weight events).
          Set to None or <= 0 to disable.
 
     The mask is applied consistently to feats, p0, p1 so downstream
@@ -41,6 +48,7 @@ def sanitize_events(feats, p0, p1, config, split_name):
     sanitize_cfg    = config.get('sanitize', {}) or {}
     reject_negative = sanitize_cfg.get('reject_negative', True)
     lr_cap          = sanitize_cfg.get('lr_cap', 1000)
+    weight_cap      = sanitize_cfg.get('weight_cap', 100)
 
     n_before = p0.shape[0]
     mask     = torch.ones(n_before, dtype=torch.bool, device=p0.device)
@@ -68,6 +76,18 @@ def sanitize_events(feats, p0, p1, config, split_name):
         if n_lr_reject > 0:
             print(f"[SANITIZE-{split_name}] rejecting {n_lr_reject} additional events "
                   f"with LR = p1/p0 outside [{1.0/lr_cap:.2e}, {lr_cap:.2e}]")
+        mask = combined
+
+    # --- filter 3: absolute weight magnitude ----------------------------
+    if weight_cap is not None and weight_cap > 0:
+        sane_w      = (p0 < weight_cap) & (p1 < weight_cap)
+        n_before_w  = int(mask.sum().item())
+        combined    = mask & sane_w
+        n_w_reject  = n_before_w - int(combined.sum().item())
+        if n_w_reject > 0:
+            print(f"[SANITIZE-{split_name}] rejecting {n_w_reject} additional events "
+                  f"with max(p0, p1) > {weight_cap} "
+                  f"(single-event weight dominates loss when p0, p1 are mean-normalized)")
         mask = combined
 
     n_after = int(mask.sum().item())
