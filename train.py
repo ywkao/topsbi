@@ -47,7 +47,7 @@ def sanitize_events(feats, p0, p1, config, split_name):
     """
     sanitize_cfg    = config.get('sanitize', {}) or {}
     reject_negative = sanitize_cfg.get('reject_negative', True)
-    lr_cap          = sanitize_cfg.get('lr_cap', 1000)
+    lr_cap          = sanitize_cfg.get('lr_cap', 10000)
     weight_cap      = sanitize_cfg.get('weight_cap', 100)
 
     n_before = p0.shape[0]
