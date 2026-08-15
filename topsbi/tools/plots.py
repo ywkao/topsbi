@@ -1,5 +1,5 @@
 from matplotlib.axes import Axes
-from matplotlib.ticker import StrMethodFormatter
+from matplotlib.ticker import StrMethodFormatter, LogLocator, FuncFormatter, NullFormatter
 from matplotlib.animation import FuncAnimation, PillowWriter
 from topsbi.tools.buildLikelihood import expand_array
 from topsbi.tools.metrics import netEval
@@ -10,6 +10,67 @@ import mplhep as mh
 
 import os, torch, yaml, hist
 
+
+
+def _plain_number_formatter():
+    """Per-tick '%g'-style formatter (0.5, 1, 2, 3, 5, ...) that, unlike
+    ScalarFormatter, doesn't derive a single shared precision from the whole
+    axis view — that shared precision rounds small minor-tick values to 0
+    when the axis also spans large values."""
+    return FuncFormatter(lambda x, pos=None: f'{x:g}' if x else '0')
+
+
+def apply_log_style(ax, axis='both'):
+    """
+    Call after set_xscale('log')/set_yscale('log'). Adds numeric minor-tick
+    labels (2,3,5,7 subdivisions) at a smaller font than the major ticks, and
+    switches major ticks to plain numbers instead of 10^n when the axis
+    range spans less than one decade (max/min < 10).
+
+    Minor-tick subdivisions are thinned as the axis spans more decades, so
+    labels stay readable instead of piling on top of each other.
+    """
+    targets = []
+    if axis in ('x', 'both'):
+        targets.append((ax.xaxis, ax.get_xlim()))
+    if axis in ('y', 'both'):
+        targets.append((ax.yaxis, ax.get_ylim()))
+
+    for axis_obj, (vmin, vmax) in targets:
+        decades = np.log10(vmax / vmin) if vmin > 0 else 0
+        if decades <= 2:
+            subs = [2, 3, 5, 7]
+        elif decades <= 4:
+            subs = [3]
+        else:
+            subs = None  # ponytail: beyond ~4 decades, skip minor labels entirely (still gets minor ticks); narrower subs/log-density plot if this shows up unlabeled too often
+
+        if subs:
+            axis_obj.set_minor_locator(LogLocator(base=10, subs=subs))
+            axis_obj.set_minor_formatter(_plain_number_formatter())
+        else:
+            axis_obj.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1, numticks=12))
+            axis_obj.set_minor_formatter(NullFormatter())
+
+        if vmin > 0 and vmax / vmin < 10:
+            axis_obj.set_major_formatter(_plain_number_formatter())
+
+    major_size = plt.rcParams.get('xtick.labelsize', 10)
+    minor_size = major_size - 2 if isinstance(major_size, (int, float)) else 8
+    ax.tick_params(which='minor', labelsize=minor_size)
+
+
+def apply_grid(ax):
+    """
+    Background grid for every plot: solid, more visible major gridlines,
+    dotted/fainter minor gridlines on log-scale axes, all drawn below the data.
+    """
+    ax.set_axisbelow(True)
+    ax.grid(True, which='major', linestyle='-', alpha=0.4, zorder=0)
+    if ax.get_xscale() == 'log' or ax.get_yscale() == 'log':
+        ax.grid(True, which='minor', linestyle=':', alpha=0.2, zorder=0)
+    else:
+        ax.grid(False, which='minor')
 
 
 def _safe_savefig(fig, path):
@@ -102,6 +163,8 @@ def kinematic_histogram(x, params, epoch, learned_lr, true_lr, outname, ylim=Non
     ax[0].set_xlabel('')
     ax[0].set_xlim(bins[0], bins[-1])
     plt.setp(ax[0].get_xticklabels(), visible=False)
+    apply_grid(ax[0])
+    apply_grid(ax[1])
 
     lErr = []
     cErr = []
@@ -130,11 +193,13 @@ def kinematic_histogram(x, params, epoch, learned_lr, true_lr, outname, ylim=Non
     ax[0].legend()
     if ylim is None:
         ylim = ax[0].get_ylim()
+        apply_log_style(ax[0], axis='y')
         _safe_savefig(fig, outname)
         plt.close(fig)
         return ylim
     else:
         ax[0].set_ylim(ylim)
+        apply_log_style(ax[0], axis='y')
         _safe_savefig(fig, outname)
         plt.close(fig)
 
@@ -260,6 +325,10 @@ def kinematicRatioPlot(
     ax[1].set_ylabel('ratio', fontsize=12)
     ax[0].set_xlim(params['min'], params['max'])
     ax[0].legend()
+    apply_grid(ax[0])
+    apply_grid(ax[1])
+    if params['plotLog']:
+        apply_log_style(ax[0], axis='y')
     if params['outname']:
         _safe_savefig(fig, f'{params["outname"]}')
         plt.clf()
@@ -285,6 +354,7 @@ def loss_curve(
     ax.set_xlabel('Epoch')
     ax.set_ylabel('Loss')
     ax.legend()
+    apply_grid(ax)
 
 def lr_curve(
     ax: Axes,
@@ -293,6 +363,7 @@ def lr_curve(
     ax.plot(lr_history, linewidth=3, color='tab:orange')
     ax.set_xlabel('Epoch')
     ax.set_ylabel('Learning Rate')
+    apply_grid(ax)
 
 def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history=None):
     mh.style.use("CMS")
@@ -319,6 +390,8 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
     _safe_savefig(fig, f'{label}/loss.png')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='y')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/lossLog.png')
     plt.clf()
     plt.close()
@@ -346,8 +419,11 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     ax.set_xlabel('Network Output')
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
     ax.legend()
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/netOut.png')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='y')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/netOutLog.png')
     plt.clf()
     plt.close()
@@ -366,9 +442,12 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     ax.set_xlabel('False Positive Rate')
     ax.set_ylabel('True Positive Rate')
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/roc.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='both')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/rocLog.png')
     plt.clf()
     plt.close()
@@ -379,6 +458,8 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     _safe_savefig(fig, f'{label}/sExcl.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='both')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/sExclLog.png')
     plt.clf()
     plt.close()
@@ -388,6 +469,8 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     _safe_savefig(fig, f'{label}/sIncl.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='both')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/sInclLog.png')
     plt.clf()
     plt.close()
@@ -397,6 +480,8 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     _safe_savefig(fig, f'{label}/sExcl_lobin.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='both')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/sExclLog_lobin.png')
     plt.clf()
     plt.close()
@@ -406,6 +491,8 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     _safe_savefig(fig, f'{label}/sIncl_lobin.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='both')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/sInclLog_lobin.png')
     plt.clf()
     plt.close()
@@ -416,6 +503,8 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     _safe_savefig(fig, f'{label}/lrExcl.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='both')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/lrExclLog.png')
     plt.clf()
     plt.close()
@@ -425,6 +514,8 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     _safe_savefig(fig, f'{label}/lrIncl.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='both')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/lrInclLog.png')
     plt.clf()
     plt.close()
@@ -434,6 +525,8 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     _safe_savefig(fig, f'{label}/lrExcl_lobin.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='both')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/lrExclLog_lobin.png')
     plt.clf()
     plt.close()
@@ -443,6 +536,8 @@ def networkPlots(features, p0, p1, net, train_loss, test_loss, label, lr_history
     _safe_savefig(fig, f'{label}/lrIncl_lobin.png')
     ax.set_xscale('log')
     ax.set_yscale('log')
+    apply_log_style(ax, axis='both')
+    apply_grid(ax)
     _safe_savefig(fig, f'{label}/lrInclLog_lobin.png')
     plt.clf()
     plt.close()
@@ -534,6 +629,7 @@ def lrMeanPlot(
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
     ax.set_xlabel(r'$\hat{\overline{r}}\,(x;c_0,c_1)$')
     ax.set_ylabel(r'$\overline{r}\,(x,z;c_0,c_1)$')
+    apply_grid(ax)
 
     return chiSquare
 
@@ -588,6 +684,7 @@ def sMeanPlot(
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
     ax.set_xlabel(r'$\hat{\overline{s}}\,(x;c_0,c_1)$')
     ax.set_ylabel(r'$\overline{s}\,(x,z;c_0,c_1)$')
+    apply_grid(ax)
 
     return chiSquare
 
@@ -619,6 +716,7 @@ def compareDistributions(
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
     ax.set_xlabel(r'Learned $\log(\hat{r})$')
     ax.set_ylabel(r'Calculated $\log(\hat{r})$')
+    apply_grid(ax)
 
 def hist2d(
     ax: Axes, 
@@ -655,4 +753,5 @@ def hist2d(
     mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax)
     ax.set_xlabel(r'$\log[\hat{r}(x;\theta_1,\theta_0)]$')
     ax.set_ylabel(r'$\log[r(x,z:\theta_1,\theta_0)]$')
+    apply_grid(ax)
     return h
