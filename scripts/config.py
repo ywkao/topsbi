@@ -2,10 +2,10 @@
 from pathlib import Path
 
 DIR    = "gen"
-WCS    = ["ctGIm"]
-VALUES = ["5.0"]
-TAGS   = ["all"]
-NODES  = ["n128"]
+WCS    = ["ctGRe", "ctGIm", "ctj8"]
+VALUES = ["1.0", "3.0", "5.0"]
+TAGS   = ["all", "compact", "highlevel", "lowlevel"]
+NODES  = ["n256"]
 LRSCH  = ["cosine"]
 
 SRC_ROOT   = Path(f"/eos/cms/store/user/ykao/topsbi/results/fastTrain/{DIR}")
