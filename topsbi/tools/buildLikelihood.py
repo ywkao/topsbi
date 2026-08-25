@@ -39,7 +39,7 @@ class likelihood:
         lr  = (s/(1-s)).flatten()
         return lr
 
-class fullLikelihood: 
+class full_likelihood: 
     def __init__(
         self, 
         config: dict, 

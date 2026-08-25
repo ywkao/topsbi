@@ -203,6 +203,125 @@ def kinematic_histogram(x, params, epoch, learned_lr, true_lr, outname, ylim=Non
         _safe_savefig(fig, outname)
         plt.close(fig)
 
+def kinematic_ratio_plot(
+    x: np.array, 
+    dlr: np.array, 
+    plr: np.array, 
+    true_lr: np.array, 
+    **params
+):
+    """
+    Plots histogram and ratio for dedicated and parametric training.
+    Ratios are calculated with respect to HistEFT.
+
+    Args:
+        x: Kinemtaic to be plotted
+        dlr: dedicated likelihood ratio 
+        plr: parametric likelihood ratio
+        fitCoefs: EFTFitCoefficients used to calculate the event weights
+        params: dictionary containing plotting information
+    """
+    #initialize the figure
+    mh.style.use("CMS")
+    ax   = []
+    fig  = plt.figure()
+    grid = fig.add_gridspec(2, 1, hspace=0.05, height_ratios=[5, 1])
+    ax  += [fig.add_subplot(grid[0])]
+    ax  += [fig.add_subplot(grid[1], sharex=ax[0])]
+    
+    plt.setp(ax[0].get_xticklabels(), visible=False)
+
+    #initialize the histograms
+    correct_hist = hist.Hist(
+        hist.axis.Regular(
+            name='correct',
+            label=params['label'],
+            bins=params['nbins'] - 1,
+            start=params['min'],
+            stop=params['max']
+            )
+            )
+    dedicated_hist = hist.Hist(
+        hist.axis.Regular(
+            name='dedicated',
+            label=params['label'],
+            bins=params['nbins'] - 1,
+            start=params['min'],
+            stop=params['max']
+            )
+            )
+    parametric_hist = hist.Hist(
+        hist.axis.Regular(
+            name='parametric',
+            label=params['label'],
+            bins=params['nbins'] - 1,
+            start=params['min'],
+            stop=params['max']
+            )
+            )
+
+    correct_hist.fill(correct=x, weight=true_lr)
+    dedicated_hist.fill(dedicated=x, weight=dlr)
+    parametric_hist.fill(parametric=x, weight=plr)
+
+    #calculate error
+    cNum, bins = correct_hist.to_numpy()
+    dNum = dedicated_hist.values()
+    pNum = parametric_hist.values()
+    cErr = []
+    dErr = []
+    pErr = []
+
+    for i in range(params['nbins'] - 1):
+        cErr.append((true_lr[(x >= bins[i]) & (x < bins[i+1])]**2).sum())
+        dErr.append((dlr[(x >= bins[i]) & (x < bins[i+1])]**2).sum())
+        pErr.append((plr[(x >= bins[i]) & (x < bins[i+1])]**2).sum())
+    cErr = np.sqrt(np.hstack(cErr))
+    dErr = np.sqrt(np.hstack(dErr))
+    pErr = np.sqrt(np.hstack(pErr))
+
+    #plot the histograms
+    correct_hist.plot1d(ax=ax[0], yerr=cErr, label=f'Correct ({params["wc_point"]})')
+    dedicated_hist.plot1d(ax=ax[0],  yerr=dErr, label='Dedicated',  linestyle='dashdot', color='orange')
+    parametric_hist.plot1d(ax=ax[0], yerr=pErr, label='Parametric', linestyle='dashed',  color='green')
+
+    #plot the ratio and ratio errors
+    ax[1].hlines(1, bins[0], bins[-1], color='k', linestyle='dashed')
+    rBins = np.diff(bins)/2+bins[:-1]
+    dVals = np.divide(cNum, dNum, out=np.repeat(np.nan, cNum.shape), where=dNum!=0)
+    pVals = np.divide(cNum, pNum, out=np.repeat(np.nan, cNum.shape), where=pNum!=0)
+    
+    cRatio = np.divide(cErr, cNum, out=np.repeat(np.nan, cErr.shape), where=cNum!=0)
+    dRatio = np.divide(dErr, dNum, out=np.repeat(np.nan, dErr.shape), where=dNum!=0)
+    pRatio = np.divide(pErr, pNum, out=np.repeat(np.nan, pErr.shape), where=pNum!=0)
+    
+    ax[1].bar(rBins, 2*np.sqrt((cRatio + dRatio) * dVals), width=np.diff(bins), 
+              bottom = dVals - np.sqrt((cRatio + dRatio) * dVals), edgecolor='orange', lw=0,
+              hatch='//',  hatch_linewidth=0.8, color='none', label='Dedicated Uncertainty')
+    ax[1].bar(rBins, 2*np.sqrt((cRatio + pRatio) * pVals), width=np.diff(bins), 
+              bottom = pVals - np.sqrt((cRatio + pRatio) * pVals), edgecolor='green', lw=0,
+              hatch='\\\\', hatch_linewidth=0.8, color='none', label='Parametric Uncertainty')
+    ax[1].plot(rBins, dVals, '^', label='Dedicated', color='orange')
+    ax[1].plot(rBins, pVals, 'v', label='Parametric', color='green')
+    ax[1].set_ylim([0,2])
+    
+    #clean up formatting
+    mh.cms.label("Preliminary", data=False, lumi=137.64, com=13, ax=ax[0])
+    if params['plotLog']:
+        ax[0].set_yscale('log')
+    ax[0].set_xlabel('') 
+    ax[0].set_ylabel('counts')
+    ax[1].set_xlabel(params['label']) 
+    ax[1].set_ylabel('ratio')
+    ax[0].set_xlim(params['min'], params['max'])
+    ax[0].legend()
+    if params['outname']:
+        fig.savefig(f'{params["outname"]}')
+        plt.clf()
+        plt.close()
+    else:
+        fig.show()
+
 def kinematicRatioPlot(
     x: np.array,
     dlr: np.array,
