@@ -16,6 +16,7 @@ class likelihood:
         """
         with open(config) as f:
             self.config = yaml.safe_load(f)
+        self.config['device'] = 'cpu'
         if 'network' in self.config.keys():
             network = self.config['network']
         else:

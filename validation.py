@@ -17,6 +17,7 @@ def main(parametric, dedicated, output):
         config['features'] = yaml.safe_load(f)
 
     features, coefficients = torch.load(config['data'], weights_only=False)[:]
+    features = features.float()
     
     plr          = full_likelihood(config, features)
     features     = features[plr.infFilter]
