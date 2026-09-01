@@ -5,7 +5,7 @@ mkdir -p ctj8 ctGRe
 
 run() {
     local cfg=$1 model=$2 eos_out=$3 local_out=$4
-    python3 run_shap.py "$cfg" --model "$model" --outdir "$eos_out"
+    python3 shap.py "$cfg" --model "$model" --outdir "$eos_out"
     cp "$eos_out"/shap_summary.png "$eos_out"/shap_ranking.txt "$local_out/"
 }
 
