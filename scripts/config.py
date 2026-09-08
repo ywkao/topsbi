@@ -2,9 +2,11 @@
 from pathlib import Path
 
 DIR    = "gen"
-WCS    = ["ctGRe", "ctGIm", "ctj8"]
-VALUES = ["1.0", "3.0", "5.0"]
-TAGS   = ["all", "compact", "highlevel", "lowlevel"]
+WCS = ['ctGIm', 'ctGRe']
+VALUES = ["-0.1", "-0.5", "-1.5"]
+# WCS = ['cQj38', 'cQj18', 'cQu8', 'cQd8', 'ctj8', 'ctu8', 'ctd8', 'cQj31', 'cQj11', 'cQu1', 'cQd1', 'ctj1', 'ctu1', 'ctd1']
+# VALUES = ["0.5", "1.5", "2.5"]
+TAGS   = ["highlevel"] # ["all", "compact", "highlevel", "lowlevel"]
 NODES  = ["n256"]
 LRSCH  = ["cosine"]
 

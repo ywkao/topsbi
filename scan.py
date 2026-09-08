@@ -21,7 +21,7 @@ SCAN_MIN          = -1.0
 SCAN_MAX          = 4.0
 N_POINTS          = 201
 Y_MAX             = 10.0
-OUTPUT            = 'scan_ctGRe.png'
+OUTPUT            = 'figure_scan_ctGRe.png'
 
 
 # =========================================================================
@@ -63,7 +63,8 @@ print(f"n_events after inf filter = {features.shape[0]}")
 # c1 will be updated inside the scan loop.
 truth_config = {
     'wcs': plr.wcs,
-    'c0':  [1.0] + [0.0] * len(plr.wcs),
+    #'c0':  [1.0] + [0.0] * len(plr.wcs),
+    'c0': [1.0, -0.5, -0.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5],
     'c1':  [1.0] + [0.0] * len(plr.wcs),   # placeholder, overwritten per point
 }
 
@@ -83,7 +84,7 @@ print(f"p1/p0: min={(p1/p0).min():.3e}, max={(p1/p0).max():.3e}, mean={(p1/p0).m
 
 # 對照 dedicated 網路 (ctGRe=1 對應 config['networks'][0])
 from topsbi.tools.buildLikelihood import likelihood
-dlr = likelihood(config['networks'][0], features.shape[1])
+dlr = likelihood(config['networks'][0])
 r_dlr = dlr(features).detach()
 print(f"dedicated NN ratio: min={r_dlr.min():.3e}, max={r_dlr.max():.3e}, mean={r_dlr.mean():.3e}")
 

@@ -1,18 +1,18 @@
 from topsbi.model.net import Net
 from topsbi.tools.data import expand_array, prepare_features
+from schema import FEATURE_NAMES
 
 import torch, tqdm, yaml
 
 sm = [1, 0.,  0.,  0.,  0.,  0.,  0.,   0.,   0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.]
 
 class likelihood:
-    def __init__(self, config, nFeatures):
+    def __init__(self, config):
         """
-        Load a trained network and prepare for conversion to the likelihood ratio. 
-        
+        Load a trained network and prepare for conversion to the likelihood ratio.
+
         Args:
             config: path to yaml file used to configure the network training
-            nFeatures: number of features used in training
         """
         with open(config) as f:
             self.config = yaml.safe_load(f)
@@ -21,22 +21,30 @@ class likelihood:
             network = self.config['network']
         else:
             network = None
+        # select the named feature subset this network was trained on out of
+        # the raw (schema.FEATURE_NAMES-ordered) feature columns; 'all' keeps
+        # every column, matching train.py's get_feature_indices()
+        feat_names = self.config.get('features', 'all')
+        self.feature_idx = None if feat_names == 'all' else [FEATURE_NAMES.index(n) for n in feat_names]
+        nFeatures = len(FEATURE_NAMES) if self.feature_idx is None else len(self.feature_idx)
+        print(f'[DEBUG] {self.config["name"]}/complete/networkStateDict.p')
         self.model = Net(nFeatures, self.config['device'], network)
-        self.model.load_state_dict(torch.load(f'{self.config["name"]}/complete/networkStateDict.p', 
-                                              map_location=torch.device(self.config['device'])))   
-    def __call__(self, 
-                 features: torch.tensor, 
+        self.model.load_state_dict(torch.load(f'{self.config["name"]}/complete/networkStateDict.p',
+                                              map_location=torch.device(self.config['device'])))
+    def __call__(self,
+                 features: torch.tensor,
                  network=None):
         """
-        Convert the network output of a series of events to a likelihood ratio. 
-        
+        Convert the network output of a series of events to a likelihood ratio.
+
         Args:
-            features: non-normalized feateures to be evaluated by the network 
+            features: non-normalized feateures to be evaluated by the network
         Returns:
             lr: evaluated likelihood ratio
         """
         with torch.no_grad():
-            s   = self.model(prepare_features(features))
+            x = features if self.feature_idx is None else features[:, self.feature_idx]
+            s   = self.model(prepare_features(x))
         lr  = (s/(1-s)).flatten()
         return lr
 
@@ -58,7 +66,7 @@ class full_likelihood:
         self.trainingMatrix = []
         self.ratios = []
         for i, yaml in tqdm.tqdm(enumerate(self.config['networks']), total=len(self.config['networks'])):
-            network = likelihood(yaml, len(self.config['features']))
+            network = likelihood(yaml)
             if i==0:
                 self.wcs = network.config['wcs']
             self.trainingMatrix += [expand_array(network.config['c1'])]
