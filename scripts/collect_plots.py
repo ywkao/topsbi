@@ -3,7 +3,7 @@ from itertools import product
 from pathlib import Path
 
 from config import (
-    WCS, VALUES, TAGS, NODES, LRSCH,
+    WC_TRAINING_VALUES, TAGS, NODES, LRSCH,
     SRC_ROOT, INDEX_SRC, FIG_ROOT, SUBDIRS,
 )
 
@@ -12,8 +12,10 @@ shutil.copy2(INDEX_SRC, FIG_ROOT / "index.php")
 
 manifest = []
 
-for tag, node, lr, value, wc in product(TAGS, NODES, LRSCH, VALUES, WCS):
-    complete_dir = SRC_ROOT / f"{tag}_{node}_dropout_{lr}" / wc / value / "complete"
+wc_value_pairs = [(wc, v) for wc, values in WC_TRAINING_VALUES.items() for v in values]
+
+for (tag, node, lr), (wc, value) in product(product(TAGS, NODES, LRSCH), wc_value_pairs):
+    complete_dir = SRC_ROOT / f"{tag}_{node}_dropout_{lr}" / wc / str(value) / "complete"
 
     if not complete_dir.is_dir():
         print(f"[skip] source folder not found: {complete_dir}")
