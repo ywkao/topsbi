@@ -259,6 +259,7 @@ def main(config):
 
     use_wandb  = config.get('wandb', True)
     skip_plots = config.get('skipPlots', False)  # ponytail: kill per-epoch PNGs for HP tuning
+    plot_every = config.get('plotEvery', 1)      # per-epoch plots every N epochs; 0 = only final plots in complete/
     if use_wandb:
         wandb.init(
             project=config.get('wandb_project', 'topsbi'),
@@ -280,8 +281,9 @@ def main(config):
     best_state     = None
 
     print("[INFO] starting networkPlots for every 50 epochs...")
+    ylims = {}  # per-feature y-range fixed at epoch 0 so animation frames are comparable
     for epoch in tqdm.tqdm(range(config['epochs'])):
-        if not skip_plots:
+        if not skip_plots and plot_every and epoch % plot_every == 0:
             s  = model.net(norm_test).cpu().detach().numpy().flatten()
             noOnes = s != 1
             s = s[noOnes]
@@ -289,11 +291,11 @@ def main(config):
             tlr = (test_p1/test_p0).detach().cpu().numpy().flatten()
             for feature, params in features_config.items():
                 if epoch == 0:
-                    ylim = kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
-                                               f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png')
+                    ylims[feature] = kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
+                                                         f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png')
                 else:
                     kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
-                                        f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylim)
+                                        f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylims[feature])
         for train_feats, train_p0, train_p1 in batches:
             optimizer.zero_grad()
             loss = model.loss(train_feats, train_p0, train_p1)
@@ -308,7 +310,7 @@ def main(config):
         testLoss.append(current_test_loss)
         check_loss('train_loss', trainLoss[-1], epoch)
         check_loss('test_loss', current_test_loss, epoch)
-        if not skip_plots and epoch % 50 == 0:
+        if not skip_plots and plot_every and epoch % 50 == 0:
             networkPlots(norm_test, test_p0, test_p1, model.net, trainLoss,
                          testLoss, f'{config["name"]}/incomplete/epoch_{epoch:04d}')
 
@@ -368,11 +370,12 @@ def main(config):
         tlr = (test_p1/test_p0).detach().cpu().numpy().flatten()
         for feature, params in features_config.items():
             kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
-                                f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylim)
-            kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
-                                f'{config["name"]}/complete/kinematics/{feature}.png', ylim=ylim, epoch_title=False)
-            plots = sorted(glob.glob(f'{config["name"]}/incomplete/kinematics/{feature}/*.png'))
-            animate_plots(plots, f'{config["name"]}/complete/animations/{feature}.gif')
+                                f'{config["name"]}/complete/kinematics/{feature}.png', ylim=ylims.get(feature), epoch_title=False)
+            if plot_every:
+                kinematic_histogram(test_feats[noOnes, params['loc']].cpu().numpy(), params, epoch, lr, tlr[noOnes],
+                                    f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}.png', ylim=ylims.get(feature))
+                plots = sorted(glob.glob(f'{config["name"]}/incomplete/kinematics/{feature}/*.png'))
+                animate_plots(plots, f'{config["name"]}/complete/animations/{feature}.gif')
 
     if use_wandb:
         wandb.finish()

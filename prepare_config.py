@@ -209,6 +209,7 @@ for feat_tag in feat_tags:
             cfg['network']  = net_val
             cfg['patience'] = 20
             cfg['seed']     = seed
+            cfg['plotEvery'] = 0    # no per-epoch plots, only final plots in complete/
             cfg.update(sched_cfg)
             cfg['name'] = (
                 f"{base['name'].rsplit('/', 2)[0]}"
