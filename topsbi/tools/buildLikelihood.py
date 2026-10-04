@@ -31,6 +31,7 @@ class likelihood:
         self.model = Net(nFeatures, self.config['device'], network)
         self.model.load_state_dict(torch.load(f'{self.config["name"]}/complete/networkStateDict.p',
                                               map_location=torch.device(self.config['device'])))
+        self.model.eval()  # dropout must be off at inference; left in train mode it made every scan non-reproducible
     def __call__(self,
                  features: torch.tensor,
                  network=None):

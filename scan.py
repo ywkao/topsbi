@@ -15,13 +15,21 @@ from topsbi.tools.data import get_probabilities
 # =========================================================================
 # Config
 # =========================================================================
-PARAMETRIC_CONFIG = './examples/validation/config_ywk.yml'
+PARAMETRIC_CONFIG = './examples/validation/config_random_seeds.yml'
+PARAMETRIC_CONFIG = './examples/validation/config_quad_solution_values.yml'
+PARAMETRIC_CONFIG = './examples/validation/config_quad_solution_values_and_random_seeds.yml'
 TARGET_WC         = 'ctGRe'
 SCAN_MIN          = -1.0
 SCAN_MAX          = 4.0
+
+SCAN_MIN          = -0.6
+SCAN_MAX          = -0.1
+
 N_POINTS          = 201
 Y_MAX             = 10.0
-OUTPUT            = 'figure_scan_ctGRe.png'
+OUTPUT            = 'figure_ctGRe_fixed_scan_random_seeds.png'
+OUTPUT            = 'figure_ctGRe_fixed_scan.png'
+OUTPUT            = 'figure_ctGRe_fixed_scan_and_random_seeds.png'
 
 
 # =========================================================================
@@ -63,8 +71,8 @@ print(f"n_events after inf filter = {features.shape[0]}")
 # c1 will be updated inside the scan loop.
 truth_config = {
     'wcs': plr.wcs,
-    #'c0':  [1.0] + [0.0] * len(plr.wcs),
-    'c0': [1.0, -0.5, -0.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5],
+    'c0':  [1.0] + [0.0] * len(plr.wcs),
+    #'c0': [1.0, -0.5, -0.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5],
     'c1':  [1.0] + [0.0] * len(plr.wcs),   # placeholder, overwritten per point
 }
 

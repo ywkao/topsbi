@@ -1,4 +1,5 @@
 from topsbi.tools.buildLikelihood import full_likelihood
+from topsbi.tools.data import get_probabilities
 
 import matplotlib.pyplot as plt
 import mplhep as mh
@@ -11,8 +12,6 @@ import argparse, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scripts.scan import robust_nll, find_cl_crossings  # noqa: E402  (reuse, not modify)
-
-SANITY_TOL = 1e-3
 
 
 def infer_wc_ranges(config):
@@ -125,25 +124,22 @@ def run_profile_scan(plr, wcs, wc, grid, bounds, free_idx, threshold, reg_streng
     return nll_total, nll_bare, nuisance_fit, converged, n_at_bound
 
 
-def fixed_nll_curve(plr, n_wcs, poi_idx, grid, threshold):
-    """scan.py-equivalent curve: all non-POI WCs held at SM (0)."""
+def truth_nll_curve(coefficients, wcs, poi_idx, grid, free_idx, nuisance_fit):
+    """
+    Analytic (p1/p0) NLL at the same profiled nuisance point as the NN curve,
+    with c0 = SM. No winsorization: this is the generator-level ratio, not an
+    NN morphing-fit extrapolation, so it has no per-event outliers to guard
+    against (same convention as scan.py's truth curve).
+    """
+    n_wcs = len(wcs)
+    c0 = [1.0] + [0.0] * n_wcs
     nll = np.empty(len(grid))
     for i, v in enumerate(grid):
-        point = build_point(n_wcs, poi_idx, v, [], [])
-        r = plr(point).detach().cpu().numpy()
-        nll[i] = robust_nll(r, threshold)
+        c1 = build_point(n_wcs, poi_idx, v, free_idx, nuisance_fit[i])
+        p0, p1 = get_probabilities(coefficients, {'wcs': wcs, 'c0': c0, 'c1': c1})
+        r = torch.clamp(p1 / p0, min=1e-12)
+        nll[i] = (-2.0 * torch.log(r).sum()).item()
     return nll
-
-
-def sanity_check_vs_fixed(grid, profile_rel, fixed_rel, tol=SANITY_TOL):
-    abs_diff = np.abs(profile_rel - fixed_rel)
-    i_max = int(np.argmax(abs_diff))
-    diff = float(abs_diff[i_max])
-    verdict = "DEGENERATE TO FIXED-SM (expected)" if diff < tol else "NON-TRIVIAL (investigate)"
-    print(f"\n[sanity check] max|profile - fixed-SM| Delta(-2lnL) = {diff:.3e}  ->  {verdict}")
-    print(f"[sanity check] driven by grid point v={grid[i_max]:.4f}: "
-          f"profile={profile_rel[i_max]:.3e}, fixed={fixed_rel[i_max]:.3e}")
-    return diff, verdict
 
 
 def main(config_path, wc, n_grid, threshold, reg_strength, output):
@@ -152,10 +148,11 @@ def main(config_path, wc, n_grid, threshold, reg_strength, output):
     with open(config['features']) as f:
         config['features'] = yaml.safe_load(f)
 
-    features, _ = torch.load(config['data'], weights_only=False)[:]
+    features, coefficients = torch.load(config['data'], weights_only=False)[:]
     features = features.float()
 
     plr = full_likelihood(config, features)
+    coefficients = coefficients[plr.infFilter]
     wcs = plr.wcs
     n_wcs = len(wcs)
     poi_idx = wcs.index(wc)
@@ -181,9 +178,8 @@ def main(config_path, wc, n_grid, threshold, reg_strength, output):
         row = ", ".join(f"{wcs[j]}={nuisance_fit[i, k]:+.3f}" for k, j in enumerate(free_idx))
         print(f"{grid[i]:8.4f} {profile_rel[i]:10.4f} {str(converged[i]):>6} {n_at_bound[i]:6d}  {row}")
 
-    fixed_nll = fixed_nll_curve(plr, n_wcs, poi_idx, grid, threshold)
-    fixed_rel = fixed_nll - fixed_nll.min()
-    sanity_diff, sanity_verdict = sanity_check_vs_fixed(grid, profile_rel, fixed_rel)
+    truth_nll = truth_nll_curve(coefficients, wcs, poi_idx, grid, free_idx, nuisance_fit)
+    truth_rel = truth_nll - truth_nll.min()
 
     best_fit = float(grid[np.argmin(profile_rel)])
     lo68, hi68 = find_cl_crossings(grid, profile_rel, 1.0)
@@ -198,18 +194,19 @@ def main(config_path, wc, n_grid, threshold, reg_strength, output):
         mh.style.use('CMS')
         fig, ax = plt.subplots()
         ax.plot(grid, profile_rel, linewidth=3, label='Profiled (15 nuisance WCs)')
-        ax.plot(grid, fixed_rel, linewidth=2, linestyle='-.', color='C1', label='Fixed-SM (scan.py)')
+        ax.plot(grid, truth_rel, linewidth=2, linestyle='--', color='red', label=r'Truth ($p_1/p_0$)')
         ax.axhline(1.0, color='grey', linestyle='--', label='68% CL')
         ax.axhline(3.84, color='grey', linestyle=':', label='95% CL')
         ax.set_xlabel(wc)
         ax.set_ylabel(r'$-2\Delta\ln L$')
-        ax.set_ylim(0, max(5, profile_rel.max() * 1.05))
+        ax.set_xlim(-2.0, 0.0)  # ponytail: hardcoded zoom, derive from profile width once CL-crossing-based sizing is needed
+        ax.set_ylim(0, 20)
         ax.legend()
         mh.cms.label('Preliminary', data=False, lumi=137.64, com=13, ax=ax)
         fig.subplots_adjust(bottom=0.22)
         fig.text(
             0.5, 0.02,
-            f'Profile over {len(free_idx)} nuisance WCs (currently equivalent to fixed-SM due to single-axis training)',
+            f'Profile over {len(free_idx)} nuisance WCs; truth evaluated at the same profiled nuisance point',
             ha='center', va='bottom', fontsize=9,
         )
         fig.savefig(f'{output}/{wc}_profile_scan.png')
@@ -217,12 +214,11 @@ def main(config_path, wc, n_grid, threshold, reg_strength, output):
 
         np.savez(
             f'{output}/{wc}_profile_scan.npz',
-            grid=grid, profile_nll=profile_rel, fixed_nll=fixed_rel,
+            grid=grid, profile_nll=profile_rel, truth_nll=truth_rel,
             nuisance_names=np.array([wcs[i] for i in free_idx]),
             nuisance_fit=nuisance_fit, converged=converged, n_at_bound=n_at_bound,
             best_fit=best_fit, ci68=np.array([lo68, hi68], dtype=float),
             ci95=np.array([lo95, hi95], dtype=float),
-            sanity_diff=sanity_diff, sanity_verdict=sanity_verdict,
         )
         print(f"\nSaved: {output}/{wc}_profile_scan.png")
         print(f"Saved: {output}/{wc}_profile_scan.npz")
