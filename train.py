@@ -184,8 +184,11 @@ def main(config):
     train_feats = (train_feats - train_means) / train_stds
     norm_test   = (test_feats - train_means) / train_stds
 
-    batches   = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(train_feats, train_p0, train_p1), 
-                                            batch_size=config['batchSize'], shuffle=True, num_workers=0)
+    # same index order as shuffle=True, but fetch each batch with one fancy-index instead of per-event __getitem__ + stack
+    train_ds  = torch.utils.data.TensorDataset(train_feats, train_p0, train_p1)
+    batches   = torch.utils.data.DataLoader(train_ds, batch_size=None, num_workers=0,
+                                            sampler=torch.utils.data.BatchSampler(torch.utils.data.RandomSampler(train_ds),
+                                                                                  config['batchSize'], drop_last=False))
     model     = Model(nFeatures=train_feats.shape[1], method=config['method'], device=config['device'], config=config['network'], seed=config['seed'])
     norm_test = norm_test.to(model.device)
     opt_cls   = getattr(torch.optim, config.get('optimizer', 'Adam'))

@@ -18,11 +18,15 @@ cfg_path = sys.argv[1]
 
 with open(cfg_path) as f:
     config = yaml.safe_load(f)
-config['device'] = 'cuda'
+# config['device'] = 'cuda'
 
 print(f"[train.py] config = {cfg_path}", flush=True)
 for k, v in config.items():
     print(f"  {k} = {v if not isinstance(v, list) else f'list(len={len(v)})'}", flush=True)
+
+import torch
+print(f"[train.py] torch threads = {torch.get_num_threads()}  "
+      f"OMP_NUM_THREADS = {os.environ.get('OMP_NUM_THREADS')}", flush=True)
 
 main(config)
 print(f"[train.py] done: {cfg_path}", flush=True)
