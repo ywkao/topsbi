@@ -11,7 +11,7 @@ require_gpus = (Capability >= 7.5)
 
 output          = logs/$(Cluster).$(Process).out
 error           = logs/$(Cluster).$(Process).err
-log             = logs/$(Cluster).$(Process).log
+log             = logs/$(Cluster).log
 
 MY.SendCredential = True            # for writing in EOS
 
