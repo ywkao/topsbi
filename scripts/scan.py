@@ -4,7 +4,7 @@ sys.path.insert(0, f"{ANALYSIS}/topsbi")
 sys.path.insert(0, ANALYSIS)
 
 from topsbi.tools.buildLikelihood import full_likelihood
-from topsbi.tools.data import get_probabilities
+from topsbi.tools.data import expand_array, get_probabilities
 
 import matplotlib.pyplot as plt
 import mplhep as mh
@@ -98,22 +98,41 @@ def plot_scan(grid, nll, nll_true, wc, path, xlim=None, ylim=None):
     plt.close(fig)
 
 
-def scan_wc(plr, coefficients, wc, wc_min, wc_max, npoints, output, threshold, truth, base):
-    """`base`: SM-inclusive point the other WCs are held at (SM, or cg for a closure test)."""
+def scan_wc(plr, coefficients, wc, wc_min, wc_max, npoints, output, threshold, truth, base, drop_negative):
+    """
+    `base`: SM-inclusive point the other WCs are held at (SM, or cg for a closure test).
+    `drop_negative`: drop every event whose ensemble (or truth) r <= 0 anywhere on the grid, so
+    both curves use one fixed event subset instead of per-point clamping/winsorizing.
+    """
     wcs = plr.wcs
     idx = wcs.index(wc)
 
     grid = np.linspace(wc_min, wc_max, npoints)
-    nll = np.empty(npoints)
-    nll_true = np.zeros(npoints)
-    for i, v in enumerate(grid):
+    points = []
+    for v in grid:
         point = list(base)
         point[idx + 1] = v
-        r = plr(point).detach().cpu().numpy()
-        nll[i] = robust_nll(r, threshold)
+        points.append(point)
+    # [npoints, n_events]; ~140 MB each for 200 points x 180k events
+    r = np.stack([plr(p).detach().cpu().numpy() for p in points])
+    t = np.stack([truth_ratio(coefficients, wcs, p) for p in points]) if truth else None
+
+    n_dropped = 0
+    if drop_negative:
+        keep = (r > 0).all(0) & ((t > 0).all(0) if truth else True)
+        n_dropped = int((~keep).sum())
+        print(f'[{wc}] dropping {n_dropped}/{keep.size} events with r <= 0 somewhere on the grid')
+        sub = coefficients[torch.from_numpy(keep)]
+        # restore E_p0[r] = 1 on the subset; get_probabilities does the same for truth below
+        p0 = (sub.float() @ expand_array([1.0] + [0.0] * len(wcs))).numpy()
+        r = r[:, keep]
+        r *= (p0.mean() / (r * p0).mean(1))[:, None]
         if truth:
-            # same winsorization as the ensemble so the two curves differ only by the NN
-            nll_true[i] = robust_nll(truth_ratio(coefficients, wcs, point), threshold)
+            t = np.stack([truth_ratio(sub, wcs, p) for p in points])
+
+    nll = np.array([robust_nll(x, threshold) for x in r])
+    # same winsorization as the ensemble so the two curves differ only by the NN
+    nll_true = np.array([robust_nll(x, threshold) for x in t]) if truth else np.zeros(npoints)
     nll -= nll.min()
     nll_true -= nll_true.min()
 
@@ -122,7 +141,7 @@ def scan_wc(plr, coefficients, wc, wc_min, wc_max, npoints, output, threshold, t
     # raw curves, so replot_scan.py can re-zoom without reloading the ensemble
     np.savez(f'{output}/{wc}_scan.npz', grid=grid, nll=nll, **({'nll_true': nll_true} if truth else {}))
 
-    summary = {'wc': wc, **summarize(grid, nll)}
+    summary = {'wc': wc, 'n_dropped': n_dropped, **summarize(grid, nll)}
     if truth:
         summary['truth'] = summarize(grid, nll_true)
     with open(f'{output}/{wc}_scan.yml', 'w') as f:
@@ -130,7 +149,7 @@ def scan_wc(plr, coefficients, wc, wc_min, wc_max, npoints, output, threshold, t
     print(summary)
 
 
-def main(parametric, wc_list, wc_min, wc_max, npoints, output, threshold, truth, others):
+def main(parametric, wc_list, wc_min, wc_max, npoints, output, threshold, truth, others, drop_negative):
     with open(parametric) as f:
         config = yaml.safe_load(f)
     with open(config['features']) as f:
@@ -150,7 +169,7 @@ def main(parametric, wc_list, wc_min, wc_max, npoints, output, threshold, truth,
         lo, hi = default_range(cg[plr.wcs.index(wc) + 1])
         lo = lo if wc_min is None else wc_min
         hi = hi if wc_max is None else wc_max
-        scan_wc(plr, coefficients, wc, lo, hi, npoints, output, threshold, truth, base)
+        scan_wc(plr, coefficients, wc, lo, hi, npoints, output, threshold, truth, base, drop_negative)
 
 
 if __name__ == '__main__':
@@ -165,6 +184,8 @@ if __name__ == '__main__':
     parser.add_argument('--truth', action='store_true', help='overlay analytic p1/p0 truth curve (winsorized with the same --threshold)')
     parser.add_argument('--others', choices=['sm', 'cg'], default='sm',
                         help='hold the non-scanned WCs at SM (0) or at the sample generation point cg; cg = closure test, truth minimum should sit at cg')
+    parser.add_argument('--drop-negative', action='store_true',
+                        help='drop events with r <= 0 anywhere on the grid (fixed subset for both curves); use with --threshold 0')
 
     args = parser.parse_args()
-    main(args.parametric, args.wc, args.wc_min, args.wc_max, args.npoints, args.output, args.threshold, args.truth, args.others)
+    main(args.parametric, args.wc, args.wc_min, args.wc_max, args.npoints, args.output, args.threshold, args.truth, args.others, args.drop_negative)
