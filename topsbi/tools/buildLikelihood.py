@@ -53,15 +53,19 @@ class full_likelihood:
     def __init__(
         self, 
         config: dict, 
-        features: torch.tensor
+        features: torch.tensor,
+        anchor_sm: bool = True
     ):
         """
-        Prepare an ensemble of network to be used to find the likelihood ratio 
-        at an arbitrary point in WC space. 
+        Prepare an ensemble of network to be used to find the likelihood ratio
+        at an arbitrary point in WC space.
 
         Args:
-            config: dictionary containing the networks and parameters for network ensemble 
+            config: dictionary containing the networks and parameters for network ensemble
             features: non-normalized feateures to be evaluated by the networks
+            anchor_sm: add r(x|c0) = 1 as an extra morphing row, no network needed. Without it
+                one-WC + pairwise training points leave the constant term unconstrained
+                (e.g. 152 points for 153 quadratic terms) and lstsq picks it arbitrarily per event.
         """
         self.config = config
         self.trainingMatrix = []
@@ -75,6 +79,10 @@ class full_likelihood:
                 self.ratios += [torch.ones(features.shape[0])]
             else:
                 self.ratios += [network(features)]
+        if anchor_sm:
+            # every network shares c0 (the SM reference), where the ratio is exactly 1
+            self.trainingMatrix += [expand_array(network.config['c0'])]
+            self.ratios += [torch.ones(features.shape[0])]
         self.trainingMatrix = torch.vstack(self.trainingMatrix)
         self.zerosMask = ~(self.trainingMatrix == 0).all(dim=0)
         self.trainingMatrix = self.trainingMatrix[:,self.zerosMask]
