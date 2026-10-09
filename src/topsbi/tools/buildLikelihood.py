@@ -74,7 +74,7 @@ class full_likelihood:
             else:
                 temp_ratio = network(features)
                 self.ratios += [torch.divide(temp_ratio, sm_ratio)]
-        self.trainingMatrix += [get_lower_tri([1] + [0] * len(self.wcs))]
+        self.trainingMatrix += [get_lower_tri([1] + [0] * (len(network.config['c1']) - 1))]
         self.ratios += [torch.ones(self.ratios[0].shape)]
         self.trainingMatrix = torch.vstack(self.trainingMatrix)
         self.zerosMask = ~(self.trainingMatrix == 0).all(dim=0)
@@ -103,28 +103,27 @@ class ensemble:
         config: dict,
         features: torch.tensor,
     ):
-        self.gammas = []
         likelihood_config = {}
         likelihood_config['device'] = config['device']
         likelihood_config['c0'] = config['c0']
         likelihood_config['cg'] = config['cg']
         likelihood_config['features'] = config['features']
 
-        n_wcs = len(likelihood_config['c0']) - 1
-
-        n_expanded = int(((n_wcs + 1) * (n_wcs + 2)) / 2)
         n_events = int(features.shape[0])
-        self.gammas = torch.zeros((n_expanded, n_events))
+        self.gammas = None
         self.zeros_mask = None
+        # events with an inf ratio in any seed are dropped, as full_likelihood does within a seed
+        self.infFilter = torch.ones(n_events, dtype=torch.bool)
         for seed in config['seeds'].keys():
             likelihood_config['sm'] = config['seeds'][seed]['sm']
             likelihood_config['networks'] = config['seeds'][seed]['networks']
             temp_likelihood = full_likelihood(likelihood_config, features)
             if self.zeros_mask is None:
                 self.zeros_mask = temp_likelihood.zerosMask
-                self.gammas = self.gammas[self.zeros_mask]
-            self.gammas += temp_likelihood.gammas
-        self.gammas.divide(len(config['seeds']))
+                self.gammas = torch.zeros((int(self.zeros_mask.sum()), n_events))
+            self.gammas[:, temp_likelihood.infFilter] += temp_likelihood.gammas
+            self.infFilter &= temp_likelihood.infFilter
+        self.gammas = self.gammas[:, self.infFilter] / len(config['seeds'])
 
     def __call__(self, coefs: list):
         return get_lower_tri(coefs)[self.zeros_mask] @ self.gammas
