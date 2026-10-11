@@ -109,6 +109,32 @@ def get_probabilities(coefs: torch.tensor, config: dict):
     return p0.to(torch.float32), p1.to(torch.float32), pg.to(torch.float32)
 
 
+def sanitize_mask(p0, p1, config: dict, split: str):
+    """
+    Select events, dropping those whose weights make the weighted BCE ill-defined or dominated by a few events.
+
+    Filters, set via config['sanitize'] (each disabled with None or <= 0):
+        reject_negative (True): p0 <= 0 or p1 <= 0, morphing artifacts that make BCE unbounded
+        lr_cap (10000): p1/p0 outside [1/lr_cap, lr_cap]
+        weight_cap (100): max(p0, p1) >= weight_cap, with p0, p1 mean-normalised
+    Returns:
+        boolean mask of the kept events
+    """
+    cfg = config.get('sanitize') or {}
+    mask = torch.ones(p0.shape[0], dtype=torch.bool)
+    if cfg.get('reject_negative', True):
+        mask &= (p0 > 0) & (p1 > 0)
+    lr_cap = cfg.get('lr_cap', 10000)
+    if lr_cap and lr_cap > 0:
+        lr = p1 / torch.where(p0 > 0, p0, torch.ones_like(p0))
+        mask &= (lr > 1 / lr_cap) & (lr < lr_cap)
+    weight_cap = cfg.get('weight_cap', 100)
+    if weight_cap and weight_cap > 0:
+        mask &= (p0 < weight_cap) & (p1 < weight_cap)
+    print(f'[sanitize-{split}] kept {int(mask.sum())}/{mask.numel()} events')
+    return mask
+
+
 def get_feature_normalization(features: torch.tensor):
     """
     Get mean and standard deviation to normalize a set of features.

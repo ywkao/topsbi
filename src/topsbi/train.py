@@ -6,6 +6,7 @@ from topsbi.tools.data import (
     get_weights,
     sample_boostrap,
     get_feature_normalization,
+    sanitize_mask,
 )
 
 import argparse, glob, os, tqdm, torch, yaml
@@ -44,12 +45,16 @@ def main(config):
         _ = None
         train_p0, train_p1, train_pg = get_probabilities(train_coefs, config)
         train_coefs = None
+        keep = sanitize_mask(train_p0, train_p1, config, 'train')
+        train_feats, train_p0, train_p1, train_pg = train_feats[keep], train_p0[keep], train_p1[keep], train_pg[keep]
         test_feats, test_coefs, _ = test[:]
         # test_feats,  test_coefs  = test[:]
         test = None
         _ = None
         test_p0, test_p1, test_pg = get_probabilities(test_coefs, config)
         test_coefs = None
+        keep = sanitize_mask(test_p0, test_p1, config, 'test')
+        test_feats, test_p0, test_p1, test_pg = test_feats[keep], test_p0[keep], test_p1[keep], test_pg[keep]
         tlr = (test_p1 / test_p0).detach().cpu().numpy().flatten()
     elif config['method'] == 'weights_only':
         year_loc = config.get('year_loc', 21)
