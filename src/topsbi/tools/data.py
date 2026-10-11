@@ -98,13 +98,15 @@ def get_probabilities(coefs: torch.tensor, config: dict):
         p0: event probability ratio under c0 and normalized by the mean
         p1: event probability ratio under c1 and normalized by the mean
     """
-    pg = coefs @ get_lower_tri(config['cg'])
-    p0 = coefs @ get_lower_tri(config['c0'])
-    p1 = coefs @ get_lower_tri(config['c1'])
+    # compute in double precision like get_weights, so float32 and float64 coefs both work
+    coefs = coefs.to(torch.float64)
+    pg = coefs @ get_lower_tri(config['cg'], dtype=torch.float64)
+    p0 = coefs @ get_lower_tri(config['c0'], dtype=torch.float64)
+    p1 = coefs @ get_lower_tri(config['c1'], dtype=torch.float64)
     pg /= pg.mean()
     p0 /= (p0.mean()) * pg
     p1 /= (p1.mean()) * pg
-    return p0, p1, pg
+    return p0.to(torch.float32), p1.to(torch.float32), pg.to(torch.float32)
 
 
 def get_feature_normalization(features: torch.tensor):
