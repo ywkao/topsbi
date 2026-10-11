@@ -13,6 +13,8 @@ import argparse, glob, os, tqdm, torch, yaml
 import numpy as np
 
 
+# gradients only inside the optimizer loop; evaluating the full training set with autograd costs ~10 GB
+@torch.no_grad()
 def main(config):
     with open(config['features'], 'r') as f:
         features_config = yaml.safe_load(f)
@@ -95,11 +97,17 @@ def main(config):
         test_p0 /= (test_p0.mean()) * test_pg
         test_p1 /= (test_p1.mean()) * test_pg
 
+    device = config['device']
+    train_feats, train_p0, train_p1 = train_feats.to(device), train_p0.to(device), train_p1.to(device)
+    test_feats, test_p0, test_p1 = test_feats.to(device), test_p0.to(device), test_p1.to(device)
+    # tensors may live on the GPU, so no worker processes; one fancy-index per batch instead of per-event __getitem__
+    train_ds = torch.utils.data.TensorDataset(train_feats, train_p0, train_p1)
     batches = torch.utils.data.DataLoader(
-        torch.utils.data.TensorDataset(train_feats, train_p0, train_p1),
-        batch_size=config['batchSize'],
-        shuffle=True,
-        num_workers=1,
+        train_ds,
+        batch_size=None,
+        sampler=torch.utils.data.BatchSampler(
+            torch.utils.data.RandomSampler(train_ds), batch_size=config['batchSize'], drop_last=False
+        ),
     )
     model = Model(
         nFeatures=train_feats.shape[1],
@@ -230,11 +238,12 @@ def main(config):
                 lr_history=lrHistory,
             )
         model.net.train()
-        for train_feats, train_p0, train_p1 in batches:
-            optimizer.zero_grad()
-            loss = model.loss(train_feats, train_p0, train_p1)
-            loss.backward()
-            optimizer.step()
+        with torch.enable_grad():
+            for train_feats, train_p0, train_p1 in batches:
+                optimizer.zero_grad()
+                loss = model.loss(train_feats, train_p0, train_p1)
+                loss.backward()
+                optimizer.step()
         model.net.eval()
         current_test_loss = model.loss(test_feats, test_p0, test_p1).item()
         testLoss.append(current_test_loss)
