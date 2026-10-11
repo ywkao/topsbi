@@ -106,6 +106,8 @@ def main(config):
     # the network standardises its inputs with the training-set statistics, which are saved in model.pt
     model.net.set_feature_normalization(*get_feature_normalization(train_feats))
     optimizer = torch.optim.Adam(model.net.parameters(), lr=config['learningRate'])
+    # dropout stays off for every evaluation (losses, early stopping, plots); on only for the optimizer steps
+    model.net.eval()
 
     scheduler_type = config.get('scheduler', 'plateau')
     if scheduler_type == 'plateau':
@@ -222,11 +224,13 @@ def main(config):
                 method=config['method'],
                 lr_history=lrHistory,
             )
+        model.net.train()
         for train_feats, train_p0, train_p1 in batches:
             optimizer.zero_grad()
             loss = model.loss(train_feats, train_p0, train_p1)
             loss.backward()
             optimizer.step()
+        model.net.eval()
         current_test_loss = model.loss(test_feats, test_p0, test_p1).item()
         testLoss.append(current_test_loss)
 

@@ -53,3 +53,18 @@ def test_ensemble_averages_seeds_and_combines_inf_filters(monkeypatch):
 
     assert ens.infFilter.sum() == N_EVENTS - 2
     torch.testing.assert_close(ens.gammas, torch.full((6, N_EVENTS - 2), 2.0))
+
+
+def test_likelihood_is_deterministic_with_dropout(train_config, tmp_path):
+    import yaml
+
+    from topsbi.train import main
+
+    train_config['network'][0]['dropout'] = 0.5
+    main(train_config)
+    config_path = tmp_path / 'config.yml'
+    config_path.write_text(yaml.safe_dump(train_config))
+    features = torch.load(tmp_path / 'data' / 'train.p', weights_only=False)[:200][0]
+
+    lr = buildLikelihood.likelihood(str(config_path), features.shape[1])
+    torch.testing.assert_close(lr(features), lr(features))
