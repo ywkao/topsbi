@@ -44,15 +44,12 @@ def main(config):
         _ = None
         train_p0, train_p1, train_pg = get_probabilities(train_coefs, config)
         train_coefs = None
-        norm_mean, norm_stdv = get_feature_normalization(train_feats)
-        train_feats = (train_feats - norm_mean) / norm_stdv
         test_feats, test_coefs, _ = test[:]
         # test_feats,  test_coefs  = test[:]
         test = None
         _ = None
         test_p0, test_p1, test_pg = get_probabilities(test_coefs, config)
         test_coefs = None
-        norm_test = (test_feats - norm_mean) / norm_stdv
         tlr = (test_p1 / test_p0).detach().cpu().numpy().flatten()
     elif config['method'] == 'weights_only':
         year_loc = config.get('year_loc', 21)
@@ -68,8 +65,6 @@ def main(config):
         train_p0 /= w_norm
         train_p1 /= w_norm
         train_pg /= w_norm
-        norm_mean, norm_stdv = get_feature_normalization(train_feats)
-        train_feats = (train_feats - norm_mean) / norm_stdv
         test_feats, test_coefs, _ = test[:]
         test_feats = test_feats.to(torch.float32)
         test = None
@@ -79,7 +74,6 @@ def main(config):
         test_p0 /= w_norm
         test_p1 /= w_norm
         test_pg /= w_norm
-        norm_test = (test_feats - norm_mean) / norm_stdv
         tlr = (test_p1 / test_p0).detach().cpu().numpy().flatten()
     elif config['method'] == 'alice':
         train_feats, train_coefs = train[:]
