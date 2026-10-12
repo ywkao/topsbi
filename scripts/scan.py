@@ -31,9 +31,9 @@ def find_cl_crossings(grid, nll, level):
     return lo, hi
 
 
-def robust_nll(r, threshold):
+def robust_nll(r, threshold, weights=None):
     """
-    -2*sum(log r), winsorizing r at the given quantile threshold first.
+    -2*sum(weights * log r), winsorizing r at the given quantile threshold first.
 
     The lstsq morphing fit in full_likelihood extrapolates badly for a handful
     of events (huge or negative r); same instability lrMeanPlot/sMeanPlot guard
@@ -42,7 +42,7 @@ def robust_nll(r, threshold):
     """
     lo, hi = np.quantile(r, [threshold, 1 - threshold])
     r = np.clip(r, max(lo, 1e-12), hi)
-    return -2 * np.log(r).sum()
+    return -2 * (np.log(r) if weights is None else weights * np.log(r)).sum()
 
 
 def truth_ratio(coefficients, point, cg):
@@ -50,6 +50,12 @@ def truth_ratio(coefficients, point, cg):
     c0 = [1.0] + [0.0] * (len(point) - 1)
     p0, p1, _ = get_probabilities(coefficients, {'c0': c0, 'c1': point, 'cg': cg})
     return (p1 / p0).cpu().numpy()
+
+
+def data_weights(coefficients, point, cg):
+    """Per-event p(point)/pg, mean 1: reweights the sample (drawn at cg) into pseudo-data at `point`."""
+    weights, _, _ = get_probabilities(coefficients, {'c0': point, 'c1': point, 'cg': cg})
+    return weights.cpu().numpy().astype(np.float64)
 
 
 def summarize(grid, nll):
@@ -65,10 +71,10 @@ def summarize(grid, nll):
     }
 
 
-def default_range(cg):
-    """Span SM (0) and the sample generation point cg, padded by |cg|/2 on each side."""
-    pad = 0.5 * abs(cg) or 1.0
-    return min(0.0, cg) - pad, max(0.0, cg) + pad
+def default_range(c):
+    """Span SM (0) and c (the data point along the scanned WC), padded by |c|/2 on each side."""
+    pad = 0.5 * abs(c) or 1.0
+    return min(0.0, c) - pad, max(0.0, c) + pad
 
 
 def plot_scan(grid, nll, nll_true, wc, path, xlim=None, ylim=None):
@@ -96,9 +102,13 @@ def plot_scan(grid, nll, nll_true, wc, path, xlim=None, ylim=None):
     plt.close(fig)
 
 
-def scan_wc(plr, coefficients, wcs, cg, wc, wc_min, wc_max, npoints, output, threshold, truth, base, drop_negative):
+def scan_wc(
+    plr, coefficients, wcs, cg, wc, wc_min, wc_max, npoints, output, threshold, truth, base, drop_negative, data=None
+):
     """
     `base`: SM-inclusive point the other WCs are held at (SM, or cg for a closure test).
+    `data`: SM-inclusive point to reweight the sample to as pseudo-data (None: the raw sample, i.e. data at cg);
+    for a closure test the minimum should then sit at data.
     `drop_negative`: drop every event whose ensemble (or truth) r <= 0 anywhere on the grid, so
     both curves use one fixed event subset instead of per-point clamping/winsorizing.
     """
@@ -114,9 +124,10 @@ def scan_wc(plr, coefficients, wcs, cg, wc, wc_min, wc_max, npoints, output, thr
     r = np.stack([plr(p).detach().cpu().numpy() for p in points])
     t = np.stack([truth_ratio(coefficients, p, cg) for p in points]) if truth else None
 
+    w = None if data is None else data_weights(coefficients, data, cg)
     n_dropped = 0
     if drop_negative:
-        keep = (r > 0).all(0) & ((t > 0).all(0) if truth else True)
+        keep = (r > 0).all(0) & ((t > 0).all(0) if truth else True) & (True if w is None else w > 0)
         n_dropped = int((~keep).sum())
         print(f'[{wc}] dropping {n_dropped}/{keep.size} events with r <= 0 somewhere on the grid')
         sub = coefficients[torch.from_numpy(keep)]
@@ -126,10 +137,12 @@ def scan_wc(plr, coefficients, wcs, cg, wc, wc_min, wc_max, npoints, output, thr
         r *= (p0.mean() / (r * p0).mean(1))[:, None]
         if truth:
             t = np.stack([truth_ratio(sub, p, cg) for p in points])
+        if w is not None:
+            w = data_weights(sub, data, cg)
 
-    nll = np.array([robust_nll(x, threshold) for x in r])
+    nll = np.array([robust_nll(x, threshold, w) for x in r])
     # same winsorization as the ensemble so the two curves differ only by the NN
-    nll_true = np.array([robust_nll(x, threshold) for x in t]) if truth else np.zeros(npoints)
+    nll_true = np.array([robust_nll(x, threshold, w) for x in t]) if truth else np.zeros(npoints)
     nll -= nll.min()
     nll_true -= nll_true.min()
 
@@ -139,6 +152,8 @@ def scan_wc(plr, coefficients, wcs, cg, wc, wc_min, wc_max, npoints, output, thr
     np.savez(f'{output}/{wc}_scan.npz', grid=grid, nll=nll, **({'nll_true': nll_true} if truth else {}))
 
     summary = {'wc': wc, 'n_dropped': n_dropped, **summarize(grid, nll)}
+    if data is not None:
+        summary['data'] = float(data[idx + 1])
     if truth:
         summary['truth'] = summarize(grid, nll_true)
     with open(f'{output}/{wc}_scan.yml', 'w') as f:
@@ -146,7 +161,7 @@ def scan_wc(plr, coefficients, wcs, cg, wc, wc_min, wc_max, npoints, output, thr
     print(summary)
 
 
-def main(parametric, wc_list, wc_min, wc_max, npoints, output, threshold, truth, others, drop_negative):
+def main(parametric, wc_list, wc_min, wc_max, npoints, output, threshold, truth, others, drop_negative, data_values):
     with open(parametric) as f:
         config = yaml.safe_load(f)
     with open(config['features']) as f:
@@ -162,12 +177,20 @@ def main(parametric, wc_list, wc_min, wc_max, npoints, output, threshold, truth,
         network = yaml.safe_load(f)
     cg, wcs = network['cg'], network['wcs']
     base = cg if others == 'cg' else [1.0] + [0.0] * len(wcs)
+    if data_values:
+        with open(data_values) as f:
+            data_values = yaml.safe_load(f)
 
     for wc in wc_list:
-        lo, hi = default_range(cg[wcs.index(wc) + 1])
+        idx = wcs.index(wc) + 1
+        data = None
+        if data_values:
+            data = list(base)
+            data[idx] = data_values[wc]
+        lo, hi = default_range(cg[idx] if data is None else data[idx])
         lo = lo if wc_min is None else wc_min
         hi = hi if wc_max is None else wc_max
-        scan_wc(plr, coefficients, wcs, cg, wc, lo, hi, npoints, output, threshold, truth, base, drop_negative)
+        scan_wc(plr, coefficients, wcs, cg, wc, lo, hi, npoints, output, threshold, truth, base, drop_negative, data)
 
 
 if __name__ == '__main__':
@@ -205,6 +228,13 @@ if __name__ == '__main__':
         help='drop events with r <= 0 anywhere on the grid (fixed subset for both curves); use with --threshold 0',
     )
 
+    parser.add_argument(
+        '--data-values',
+        default=None,
+        help='yml {wc: value}: pseudo-data at --others with the scanned WC set to value, by reweighting the sample; '
+        'closure test near SM with --others sm',
+    )
+
     args = parser.parse_args()
     main(
         args.parametric,
@@ -217,4 +247,5 @@ if __name__ == '__main__':
         args.truth,
         args.others,
         args.drop_negative,
+        args.data_values,
     )
