@@ -58,6 +58,7 @@ def main(config):
         keep = sanitize_mask(test_p0, test_p1, config, 'test')
         test_feats, test_p0, test_p1, test_pg = test_feats[keep], test_p0[keep], test_p1[keep], test_pg[keep]
         tlr = (test_p1 / test_p0).detach().cpu().numpy().flatten()
+        tp0 = test_p0.detach().cpu().numpy().flatten()
     elif config['method'] == 'weights_only':
         year_loc = config.get('year_loc', 21)
         train_feats, train_coefs, _ = train[:]
@@ -82,6 +83,7 @@ def main(config):
         test_p1 /= w_norm
         test_pg /= w_norm
         tlr = (test_p1 / test_p0).detach().cpu().numpy().flatten()
+        tp0 = test_p0.detach().cpu().numpy().flatten()
     elif config['method'] == 'alice':
         train_feats, train_coefs = train[:]
         test_feats, test_coefs = test[:]
@@ -190,6 +192,7 @@ def main(config):
                     epoch,
                     lr,
                     tlr[noOnes],
+                    tp0[noOnes],
                     f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}_log.png',
                 )
                 features_config[feature]['ylim_linear'] = kinematic_histogram(
@@ -198,6 +201,7 @@ def main(config):
                     epoch,
                     lr,
                     tlr[noOnes],
+                    tp0[noOnes],
                     f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}_linear.png',
                     log=False,
                 )
@@ -208,6 +212,7 @@ def main(config):
                     epoch,
                     lr,
                     tlr[noOnes],
+                    tp0[noOnes],
                     f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}_log.png',
                     ylim=params['ylim_log'],
                 )
@@ -217,6 +222,7 @@ def main(config):
                     epoch,
                     lr,
                     tlr[noOnes],
+                    tp0[noOnes],
                     f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}_linear.png',
                     ylim=params['ylim_linear'],
                     log=False,
@@ -285,6 +291,7 @@ def main(config):
             epoch,
             lr,
             tlr[noOnes],
+            tp0[noOnes],
             f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}_log.png',
             ylim=params['ylim_log'],
         )
@@ -294,6 +301,7 @@ def main(config):
             epoch,
             lr,
             tlr[noOnes],
+            tp0[noOnes],
             f'{config["name"]}/incomplete/kinematics/{feature}/{epoch:04d}_linear.png',
             ylim=params['ylim_linear'],
             log=False,
@@ -346,6 +354,7 @@ def main(config):
             epoch,
             lr,
             tlr[noOnes],
+            tp0[noOnes],
             f'{config["name"]}/complete/kinematics/{feature}_log.png',
             epoch_title=False,
             scale_ratio=True,
@@ -356,6 +365,7 @@ def main(config):
             epoch,
             lr,
             tlr[noOnes],
+            tp0[noOnes],
             f'{config["name"]}/complete/kinematics/{feature}_linear.png',
             log=False,
             epoch_title=False,

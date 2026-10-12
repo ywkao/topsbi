@@ -36,10 +36,22 @@ def animate_plots(plots, outname, fps=5):
 
 
 def kinematic_histogram(
-    x, params, epoch, learned_lr, true_lr, outname, ylim=None, epoch_title=True, x2=None, log=True, scale_ratio=False
+    x,
+    params,
+    epoch,
+    learned_lr,
+    true_lr,
+    p0,
+    outname,
+    ylim=None,
+    epoch_title=True,
+    x2=None,
+    log=True,
+    scale_ratio=False,
 ):
     '''
-    Histogram of learned and true likelihood ratio as a function of a kinematic variable.
+    Histogram of c0 reweighted by the learned likelihood ratio against the true c1 distribution,
+    as a function of a kinematic variable.
 
     Args:
         x: Kinematic to be plotted
@@ -47,8 +59,12 @@ def kinematic_histogram(
         epoch: epoch number for plot title
         learned_lr: learned likelihood ratio for each event
         true_lr: true likelihood ratio for each event
+        p0: c0 weight of each event relative to the sample it was drawn from; weighting by it compares
+            sum(p0 lr_hat) with sum(p1), not sum(lr_hat) with sum(p1/p0), which disagree for a perfect lr_hat
         outname: name for saving the plot
     '''
+    learned_lr = p0 * learned_lr
+    true_lr = p0 * true_lr
     learned = hist.Hist(
         hist.axis.Regular(
             name='learned', label=params['label'], bins=params['nbins'], start=params['min'], stop=params['max']
@@ -85,8 +101,8 @@ def kinematic_histogram(
     lErr = np.sqrt(lErr)
     cErr = np.sqrt(cErr)
 
-    correct.plot1d(ax=ax[0], yerr=cErr, label=r'$\hat{r}\,(x;\theta_1,\theta_0)$')
-    learned.plot1d(ax=ax[0], yerr=lErr, linestyle='dashdot', label=r'$r\,(x,z;\theta_1,\theta_0)$')
+    correct.plot1d(ax=ax[0], yerr=cErr, label=r'$r\,(x,z;\theta_1,\theta_0)$')
+    learned.plot1d(ax=ax[0], yerr=lErr, linestyle='dashdot', label=r'$\hat{r}\,(x;\theta_1,\theta_0)$')
 
     ratio = np.divide(n_learned, n_correct, where=(n_correct > 0), out=np.zeros(n_learned.shape))
     rErr = ratio * np.sqrt(
@@ -273,10 +289,11 @@ def networkPlots(features, p0, p1, pg, net, train_loss, test_loss, label, method
     torch.save(net.state_dict(), f'{label}/model.pt')
 
     performance = {}
-    f = net(features).cpu().detach().numpy().flatten()
-    p0 = p0.detach().cpu().numpy().flatten()
-    p1 = p1.detach().cpu().numpy().flatten()
-    pg = pg.detach().cpu().numpy().flatten()
+    # float64: the weighted variance sums below cancel catastrophically in float32
+    f = net(features).cpu().detach().numpy().flatten().astype(np.float64)
+    p0 = p0.detach().cpu().numpy().flatten().astype(np.float64)
+    p1 = p1.detach().cpu().numpy().flatten().astype(np.float64)
+    pg = pg.detach().cpu().numpy().flatten().astype(np.float64)
 
     # convert tensors to np arrays
     if (method == 'stitched') or (method == 'alice') or (method == 'weights_only'):
@@ -291,7 +308,9 @@ def networkPlots(features, p0, p1, pg, net, train_loss, test_loss, label, method
         lrhat = np.exp(f)
 
     lr = p1 / p0
-    lr_norm_factor = np.ones(lr.shape)
+    # events follow pg, so weight by p0 (= w0/wg): the binned mean is then sum(p1)/sum(p0), the ratio
+    # the network learns, instead of mean(p1/p0), which differs whenever r depends on unobserved z
+    lr_norm_factor = p0
 
     # loss curves
     fig, ax = plt.subplots()
@@ -786,7 +805,7 @@ def lr_calibration_difference(
     err_width = 2 * mean_err
     err_down = (meanlr - meanlrhat) - mean_err
 
-    mean_stdv = mean_err * np.sqrt(sumw2)
+    mean_stdv = mean_err * sumw / np.sqrt(sumw2)  # error * sqrt(effective number of events)
     stdv_width = 2 * mean_stdv
     stdv_down = (meanlr - meanlrhat) - mean_stdv
 
