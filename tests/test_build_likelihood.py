@@ -39,6 +39,33 @@ def test_full_likelihood_without_sm_reproduces_normalized_ratio(monkeypatch):
     torch.testing.assert_close(plr(c), normalized(c), rtol=1e-4, atol=1e-4)
 
 
+def test_full_likelihood_weights_only_reproduces_unnormalized_ratio(monkeypatch):
+    # weights_only shares one normalization between the classes, so networks learn w(c)/w(SM) directly
+    gammas = torch.rand(6, N_EVENTS)
+    gammas[0] = 1.0
+
+    class FakeLikelihood:
+        def __init__(self, config, n_features):
+            self.config = config
+
+        def __call__(self, features):
+            return get_lower_tri(self.config['c1']) @ gammas
+
+    def no_yields(*args):
+        raise AssertionError('weights_only must not be renormalized by the yield')
+
+    monkeypatch.setattr(buildLikelihood, 'likelihood', FakeLikelihood)
+    monkeypatch.setattr(buildLikelihood, 'mean_coefs', no_yields)
+    config = {
+        'features': ['x'],
+        'networks': [{'c0': [1.0, 0.0, 0.0], 'c1': p, 'method': 'weights_only'} for p in POINTS],
+    }
+    plr = buildLikelihood.full_likelihood(config, torch.zeros(N_EVENTS, 1))
+
+    c = [1.0, 1.5, -1.5]
+    torch.testing.assert_close(plr(c), get_lower_tri(c) @ gammas, rtol=1e-4, atol=1e-4)
+
+
 def test_ensemble_averages_seeds_and_combines_inf_filters(monkeypatch):
     seeds = {'a': 1.0, 'b': 3.0}
     dropped = {'a': 0, 'b': 7}

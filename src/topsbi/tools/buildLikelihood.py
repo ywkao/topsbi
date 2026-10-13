@@ -57,7 +57,12 @@ def mean_coefs(data, bootstrap, seed):
 
 
 def yield_ratio(config, c):
-    """Y(c)/Y(c0) on the network's training sample."""
+    """
+    Y(c)/Y(c0) on the network's training sample. Only stitched normalizes p0 and p1 by their own means;
+    weights_only scales both classes by one shared constant, so its networks already learn w(c1)/w(c0).
+    """
+    if config.get('method', 'stitched') != 'stitched':
+        return 1.0
     y = mean_coefs(config['data'], config['bootstrap'], config['seed'])
     lt = functools.partial(get_lower_tri, dtype=torch.float64)
     return float(y @ lt(c) / (y @ lt(config['c0'])))
