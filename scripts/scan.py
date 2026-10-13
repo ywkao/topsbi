@@ -161,7 +161,9 @@ def scan_wc(
     print(summary)
 
 
-def main(parametric, wc_list, wc_min, wc_max, npoints, output, threshold, truth, others, drop_negative, data_values):
+def main(
+    parametric, wc_list, wc_min, wc_max, npoints, output, threshold, truth, others, drop_negative, data_values, window=None
+):
     with open(parametric) as f:
         config = yaml.safe_load(f)
     with open(config['features']) as f:
@@ -187,7 +189,12 @@ def main(parametric, wc_list, wc_min, wc_max, npoints, output, threshold, truth,
         if data_values:
             data = list(base)
             data[idx] = data_values[wc]
-        lo, hi = default_range(cg[idx] if data is None else data[idx])
+        center = cg[idx] if data is None else data[idx]
+        lo, hi = default_range(center)
+        if window:
+            # per-WC range around the expected minimum, so the grid resolves the 68% interval
+            half = window * (abs(center) or 1.0)
+            lo, hi = center - half, center + half
         lo = lo if wc_min is None else wc_min
         hi = hi if wc_max is None else wc_max
         scan_wc(plr, coefficients, wcs, cg, wc, lo, hi, npoints, output, threshold, truth, base, drop_negative, data)
@@ -235,6 +242,13 @@ if __name__ == '__main__':
         'closure test near SM with --others sm',
     )
 
+    parser.add_argument(
+        '--window',
+        type=float,
+        default=None,
+        help='scan data (or cg) +- window * |value| per WC instead of default_range; --min/--max still override',
+    )
+
     args = parser.parse_args()
     main(
         args.parametric,
@@ -248,4 +262,5 @@ if __name__ == '__main__':
         args.others,
         args.drop_negative,
         args.data_values,
+        args.window,
     )
