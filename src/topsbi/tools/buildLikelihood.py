@@ -1,7 +1,7 @@
 from topsbi.model.net import Net
-from topsbi.tools.data import get_lower_tri
+from topsbi.tools.data import get_lower_tri, sample_boostrap
 
-import torch, tqdm, yaml
+import functools, torch, tqdm, yaml
 import numpy as np
 
 torch.set_num_threads(1)
@@ -44,6 +44,30 @@ class likelihood:
         return lr
 
 
+@functools.lru_cache
+def mean_coefs(data, bootstrap, seed):
+    """
+    Mean quadratic coefficients over the sample a network was trained on, so that mean_coefs @ get_lower_tri(c)
+    is the mean event weight at c, the normalization get_probabilities divides p0 and p1 by.
+    """
+    sample = torch.load(f'{data}/train.p', weights_only=False)
+    if bootstrap:
+        sample, _ = sample_boostrap(sample, seed)
+    return sample[:][1].to(torch.float64).mean(0)
+
+
+def yield_ratio(config, c):
+    """Y(c)/Y(c0) on the network's training sample."""
+    y = mean_coefs(config['data'], config['bootstrap'], config['seed'])
+    lt = functools.partial(get_lower_tri, dtype=torch.float64)
+    return float(y @ lt(c) / (y @ lt(config['c0'])))
+
+
+def morph(coefs, zeros_mask, gammas, config):
+    """Quadratic morphing of the unnormalized ratio w(c)/w(c0), renormalized to the shape-only ratio the networks learn."""
+    return (get_lower_tri(coefs)[zeros_mask] @ gammas) / yield_ratio(config, coefs)
+
+
 class full_likelihood:
     def __init__(
         self,
@@ -64,16 +88,19 @@ class full_likelihood:
         if 'sm' in config.keys():
             sm_network = likelihood(self.config['sm'], len(self.config['features']))
             self.wcs = sm_network.config['wcs']
-            sm_ratio = sm_network(features)
+            sm_ratio = sm_network(features) * yield_ratio(sm_network.config, sm_network.config['c1'])
         else:
             sm_ratio = 1
         for i, network_yaml in tqdm.tqdm(enumerate(self.config["networks"]), total=len(self.config['networks'])):
             network = likelihood(network_yaml, len(self.config["features"]))
             self.trainingMatrix += [get_lower_tri(network.config['c1'])]
+            self.network_config = network.config
             if network.config['c1'] == network.config['c0']:
                 self.ratios += [torch.ones(features.shape[0])]
             else:
-                temp_ratio = network(features)
+                # the network learns w(c1)/w(c0) * Y(c0)/Y(c1); the 1/Y(c1) is not quadratic in c1, so undo it before
+                # the quadratic fit (otherwise the fit is biased away from the training points, e.g. at cg)
+                temp_ratio = network(features) * yield_ratio(network.config, network.config['c1'])
                 self.ratios += [torch.divide(temp_ratio, sm_ratio)]
         self.trainingMatrix += [get_lower_tri([1] + [0] * (len(network.config['c1']) - 1))]
         self.ratios += [torch.ones(self.ratios[0].shape)]
@@ -95,7 +122,7 @@ class full_likelihood:
         Returns:
             evaluated likelihood ratio
         """
-        return get_lower_tri(coefs)[self.zerosMask] @ self.gammas
+        return morph(coefs, self.zerosMask, self.gammas, self.network_config)
 
 
 class ensemble:
@@ -133,10 +160,11 @@ class ensemble:
                 self.gammas = torch.zeros((int(self.zeros_mask.sum()), n_events))
             self.gammas[:, temp_likelihood.infFilter] += temp_likelihood.gammas
             self.infFilter &= temp_likelihood.infFilter
+            self.network_config = temp_likelihood.network_config
         self.gammas = self.gammas[:, self.infFilter] / len(config['seeds'])
 
     def __call__(self, coefs: list):
-        return get_lower_tri(coefs)[self.zeros_mask] @ self.gammas
+        return morph(coefs, self.zeros_mask, self.gammas, self.network_config)
 
 
 def get_np_parameterization(features, config, up_training, down_training):
