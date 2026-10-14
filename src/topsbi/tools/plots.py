@@ -807,11 +807,19 @@ def lr_calibration_difference(
 
     if include_stdv:
         ax.bar(qbins[:-1], stdv_width, bottom=stdv_down, width=(qbins[1:] - qbins[:-1]), **mean_stdv_formatting)
-    ax.plot([qbins[0], qbins[-1]], [0,0], color = 'grey', linestyle = ':', label = '_nolegend_')
-    ax.bar(qbins[:-1], err_width, bottom=err_down, width=(qbins[1:] - qbins[:-1]),  **mean_error_formatting)
+    ax.plot([qbins[0], qbins[-1]], [0, 0], color='grey', linestyle=':', label='_nolegend_')
+    ax.bar(qbins[:-1], err_width, bottom=err_down, width=(qbins[1:] - qbins[:-1]), **mean_error_formatting)
 
-    ax.bar(qbins[:-1], differ, width=(qbins[1:] - qbins[:-1]), label=r'$r - \hat{r}$', facecolor='none', edgecolor='k', align='edge', )
-    
+    ax.bar(
+        qbins[:-1],
+        differ,
+        width=(qbins[1:] - qbins[:-1]),
+        label=r'$r - \hat{r}$',
+        facecolor='none',
+        edgecolor='k',
+        align='edge',
+    )
+
     # ax.hist(meanlrhat, weights=differ, bins=qbins, histtype='step', color='k', label=r'$r - \hat{r}$')
 
     sign = np.sign(differ)

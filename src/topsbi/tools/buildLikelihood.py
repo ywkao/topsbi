@@ -103,8 +103,8 @@ class ensemble:
         self,
         config: dict,
         features: torch.tensor,
-        hist_residuals: bool=False,
-):
+        hist_residuals: bool = False,
+    ):
         self.gammas = []
         likelihood_config = {}
         likelihood_config['device'] = config['device']
@@ -119,7 +119,7 @@ class ensemble:
         self.gammas = torch.zeros((n_expanded, n_events))
         self.zeros_mask = None
         total_nets = 0
-        if hist_residuals: 
+        if hist_residuals:
             self.residuals = []
         for seed in config['seeds'].keys():
             likelihood_config['sm'] = config['seeds'][seed]['sm']

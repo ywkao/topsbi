@@ -22,7 +22,9 @@ def main(config):
         config['method'] = 'stitched'
 
     if config['bootstrap']:
-        train, test = sample_boostrap(torch.load(f'{config["data"]}/train.p', weights_only=False, map_location=config['device']), config['seed'])
+        train, test = sample_boostrap(
+            torch.load(f'{config["data"]}/train.p', weights_only=False, map_location=config['device']), config['seed']
+        )
 
     else:
         test = torch.load(f'{config["data"]}/test.p', weights_only=False).to(config['device'])
@@ -30,7 +32,8 @@ def main(config):
 
     train_feats, train_w0, train_w1 = prepare_weights(train, config)
     test_feats, test_w0, test_w1 = prepare_weights(test, config)
-    train = None; test = None
+    train = None
+    test = None
 
     if 'mean_norm' not in config.keys():
         config['mean_norm'] = False
