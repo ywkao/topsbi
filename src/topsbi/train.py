@@ -27,7 +27,9 @@ def main(config):
         config['method'] = 'stitched'
 
     if config['bootstrap']:
-        train, test = sample_boostrap(torch.load(f'{config["data"]}/train.p', weights_only=False), config['seed'])
+        # bootstrap_seed (default: seed) fixes the train/test split independently of the initialization and batch order
+        bootstrap_seed = config.get('bootstrap_seed', config['seed'])
+        train, test = sample_boostrap(torch.load(f'{config["data"]}/train.p', weights_only=False), bootstrap_seed)
 
     else:
         test_feats, test_coefs = torch.load(f'{config["data"]}/test.p', weights_only=False)[:]
