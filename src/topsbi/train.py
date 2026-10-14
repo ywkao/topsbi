@@ -24,8 +24,10 @@ def main(config):
         config['method'] = 'stitched'
 
     if config['bootstrap']:
+        # bootstrap_seed (default: seed) fixes the train/test split independently of the initialization and batch order
+        bootstrap_seed = config.get('bootstrap_seed', config['seed'])
         train, test = sample_boostrap(
-            torch.load(f'{config["data"]}/train.p', weights_only=False, map_location=config['device']), config['seed']
+            torch.load(f'{config["data"]}/train.p', weights_only=False, map_location=config['device']), bootstrap_seed
         )
 
     else:
