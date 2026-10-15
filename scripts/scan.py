@@ -46,15 +46,15 @@ def robust_nll(r, threshold, weights=None):
 
 
 def truth_ratio(coefficients, point, cg):
-    """Per-event analytic p1/p0 from the quadratic fit coefficients, c0 = SM (pg cancels in the ratio)."""
+    """Per-event analytic p1/p0 from the quadratic fit coefficients, c0 = SM."""
     c0 = [1.0] + [0.0] * (len(point) - 1)
-    p0, p1, _ = get_probabilities(coefficients, {'c0': c0, 'c1': point, 'cg': cg})
+    p0, p1 = get_probabilities(coefficients, {'c0': c0, 'c1': point})
     return (p1 / p0).cpu().numpy()
 
 
 def data_weights(coefficients, point, cg):
-    """Per-event p(point)/pg, mean 1: reweights the sample (drawn at cg) into pseudo-data at `point`."""
-    weights, _, _ = get_probabilities(coefficients, {'c0': point, 'c1': point, 'cg': cg})
+    """Per-event w(point), mean 1: reweights the stitched sample into pseudo-data at `point`."""
+    weights, _ = get_probabilities(coefficients, {'c0': point, 'c1': point})
     return weights.cpu().numpy().astype(np.float64)
 
 
@@ -162,7 +162,18 @@ def scan_wc(
 
 
 def main(
-    parametric, wc_list, wc_min, wc_max, npoints, output, threshold, truth, others, drop_negative, data_values, window=None
+    parametric,
+    wc_list,
+    wc_min,
+    wc_max,
+    npoints,
+    output,
+    threshold,
+    truth,
+    others,
+    drop_negative,
+    data_values,
+    window=None,
 ):
     with open(parametric) as f:
         config = yaml.safe_load(f)
