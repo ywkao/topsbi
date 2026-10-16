@@ -93,3 +93,19 @@ def test_get_weights_stitched():
 
     with pytest.raises(KeyError):
         get_weights(coefs, {k: v for k, v in config.items() if k != 'lumi'}, years)
+
+
+def test_prepare_weights_without_year_column():
+    from conftest import N_WCS
+
+    from topsbi.tools.data import prepare_weights
+
+    gen = torch.Generator().manual_seed(2)
+    feats = torch.rand(20, 13, generator=gen)
+    coefs = torch.rand(20, (N_WCS + 1) * (N_WCS + 2) // 2, generator=gen, dtype=torch.float64)
+    data = torch.utils.data.TensorDataset(feats, coefs, torch.zeros(20, 3))
+    config = {'method': 'weights_only', 'year_loc': None, 'c0': [1.0] + [0.0] * N_WCS, 'c1': [1.0] + [0.1] * N_WCS,
+              'lumi': [59.83], 'device': 'cpu'}
+    _, w0, w1 = prepare_weights(data, config)
+    for w, c in [(w0, config['c0']), (w1, config['c1'])]:
+        torch.testing.assert_close(w.double(), 59.83 * (coefs @ get_lower_tri(c, dtype=torch.float64)) * 1000, rtol=1e-6, atol=0)

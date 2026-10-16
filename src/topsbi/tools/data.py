@@ -58,7 +58,9 @@ def prepare_weights(
         year_loc = config.get('year_loc', 21)
         features, coefficients, _ = data[:]
         features = features.to(torch.float32)
-        w0, w1 = get_weights(coefficients, config, features[:, year_loc])
+        # year_loc: null for single-era samples without a year_int feature: every event uses lumi[0]
+        years = torch.zeros(len(features)) if year_loc is None else features[:, year_loc]
+        w0, w1 = get_weights(coefficients, config, years)
     elif method == 'stitched':
         features, coefficients, _ = data[:]
         w0, w1 = get_probabilities(coefficients, config)

@@ -25,7 +25,7 @@
     - `warmup_epochs`: `cosine` only, length of the linear warmup (default 5)
 - `seed`: random seed used for network initialization and the train/test split
 - `wcs`: array of WC names for sample
-- `year_loc`: optional column of the `year_int` feature used to look up `lumi` (default 21)
+- `year_loc`: optional column of the `year_int` feature used to look up `lumi` (default 21); `null` for a single-era sample without that feature, which then uses `lumi[0]` for every event
 
 The event weights of both classes, in every split, are divided by the mean training weight under `c0`. This keeps the weights O(1) for the optimizer without changing the learned ratio.
 
