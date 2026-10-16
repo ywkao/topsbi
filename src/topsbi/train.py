@@ -183,6 +183,7 @@ def main(config):
                 f'{config["name"]}/incomplete/epoch_{epoch:04d}',
                 method=config['method'],
                 lr_history=lrHistory,
+                group_cols=config.get('group_cols', (21, 19)),
             )
         model.net.train()
         with torch.enable_grad():
@@ -290,6 +291,7 @@ def main(config):
         f'{config["name"]}/complete',
         method=config['method'],
         lr_history=lrHistory,
+        group_cols=config.get('group_cols', (21, 19)),
     )
     f = model.net(eval_feats).cpu().detach().numpy().flatten()
 
