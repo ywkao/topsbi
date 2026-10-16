@@ -362,8 +362,10 @@ def networkPlots(
 
     # closure groups must come from network inputs: era (21) and njets (19, >= 4 merged) by default
     feats_np = features.detach().cpu().numpy()
+    # no group_cols (e.g. no era/njets inputs): a single group, so closure is checked in r-hat bins only
     groups = np.column_stack(
         [np.minimum(feats_np[:, c], group_caps[c]) if c in group_caps else feats_np[:, c] for c in group_cols]
+        or [np.zeros(len(feats_np))]
     )
     if method != 'weight_shift':
         groups = groups[noOnes]

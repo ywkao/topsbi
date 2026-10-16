@@ -71,6 +71,10 @@ def test_holdout_training(holdout_config, tmp_path, capsys):
     for key in ['auc', 'pull', 'rms_bias']:
         assert performance[key] == pytest.approx(direct[key], abs=1e-4)
 
+    # data without era/njets inputs: a single closure group
+    networkPlots(features, w0, w1, net, [1.0], [1.0], str(tmp_path / 'ungrouped'), method='weights_only', group_cols=())
+    assert (tmp_path / 'ungrouped' / 'group_closure.png').exists()
+
 
 def test_get_weights_stitched():
     """weights_only weights are L_y * S @ T(c): the per-sample normalization in S is kept, not divided out by cg."""
