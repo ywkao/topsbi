@@ -35,12 +35,15 @@ Base：`eddie/main` @ 6115263。下表是 2026-10-13 改寫 trailer 之後的 ha
 
 | 問題 | 說明 |
 |---|---|
-| **近 SM closure 失敗** | 主要的 open 問題。**主要來源已定位：網路在 m_ttbar > 1 TeV 的 calibration**（嘗試 19、20）。1.3 TeV 以上 r̂ 高估 8% 到數倍，1.0–1.3 TeV 低估 1–6%。只用 m_ttbar < 1300 GeV 時 cQj11 偏差 ≤ 3.5%；cQd8 翻成 +4 ~ +6% |
+| **近 SM closure 失敗** | 主要的 open 問題。**主要來源已定位：網路在 m_ttbar > 1 TeV 的 calibration**（嘗試 19、20）。log features（嘗試 21）把 cQj11 的 tail 高估壓到 ≤ 30%；cQd8 的 tail 仍高估約 2 倍，1.0–1.3 TeV 低估、1.3–2 TeV 高估的模式沒變。在共同 events 上，log 和 linear 的近 SM fit 差不多，平均 3 seeds 偏 −8 ~ −1%，再切掉 > 2 TeV 後大多在 ±4% 內（嘗試 22） |
 | cg closure 失敗 | 先放一邊：近 SM 都還沒 closure，cg 只會更差 |
-| 高 r̂ tail | r̂ > 10 的 events，網路預測約 30–40，實際約 20；網路普遍高估 E[r̂] 約 4%。**就是高 m_ttbar 的外推**（嘗試 19）：線性標準化後 8.5 TeV 是 z = 18，LeakyReLU 網路在那裡線性外推 logit，r̂ 指數成長 |
+| 高 r̂ tail | r̂ > 10 的 events，網路預測約 30–40，實際約 20；網路普遍高估 E[r̂] 約 4%。**就是高 m_ttbar 的外推**（嘗試 19）：線性標準化後 8.5 TeV 是 z = 18，LeakyReLU 網路在那裡線性外推 logit，r̂ 指數成長。log features 後最大 z = 5.9，cQj11 大致解決，cQd8 減半（嘗試 21） |
+| cQd8 在 1–2 TeV 的形狀 | 1.0–1.3 TeV 低估 2–7%、1.3–2 TeV 高估 8–17%，linear 和 log features 都一樣，seeds 之間也一致 → 不是外插、也不是隨機誤差；weights_only 也一樣（嘗試 23），所以不是 stitched 造成的。原因未知 |
+| upstream 2b1c033 要求 `sm` 網路 | `full_likelihood` 沒有 `sm` 就 UnboundLocalError；我們 c0 = SM，不需要 SM 網路。要和 Eddie 討論（見 `README_upstream_status_ywk.md`） |
 | ctGIm 近 SM 偏小約 5% | 可能是 highlevel features 缺少 CP-odd 的觀測量 |
 | 訓練不穩定 | 同一個點不同 seeds 的 log r̂ 逐 event 差約 12%。4 種訓練設定中只有 batch 10000 降低 20%（嘗試 17）。seed 間 best fit 的差異大部分也來自 tail 外推（嘗試 20） |
-| `--drop-negative` 依賴掃描範圍 | 丟掉的 events 隨範圍改變，best fit 也跟著變（cQu1：1.665 vs 1.585） |
+| `--drop-negative` 依賴掃描範圍**和網路** | 丟掉的 events 隨範圍改變，best fit 也跟著變（cQu1：1.665 vs 1.585）。**也隨網路改變**：tail 越差丟得越多，scan 被美化得越多，所以不同網路的 scan 不能直接比（嘗試 22；cQd8 seed 2：bs10k 丟 552 個、log_bs10k 丟 140 個）。比較時用 `local/common_events_fit.py` |
+| **scan 的 truth 不完全落在 data 點上**（2026-10-17 發現） | `scan.py` 的 pseudo-data 權重是 `p(c_data)/pg`，但每個 grid 點的歸一化 E_p0[r] 用沒除 pg 的 `p0 = p(SM)`，兩者量度不一致。16 個 WC 中 14 個不受影響；cQd8 的 truth 永遠偏 +1 格（+0.25%），ctGRe 偏 −1 ~ −10 格（約 0.5–2.5%），都在 68% 內。只用 truth 驗證過：權重不除 pg，或歸一化改用 `p0/pg`，truth 就準確落在 data 上。網路的曲線帶著同樣的偏移，所以「網路 vs truth」大致不受影響，「網路 vs data」多一點偏差；cQd8 的結論不變，ctGRe 精細比較時要注意。修法：`scripts/scan.py` 擇一修改，`local/common_events_fit.py` 也要一起改。還沒改 |
 | 0.1% 的點 | 低於 validation 樣本（18 萬個 events）的靈敏度，closure 沒有意義（嘗試 16） |
 | `validation.py` 的 `kinematic_ratio_plot` | 和 dabf409 一樣的權重問題（upstream 正在重寫，issue #5） |
 | `bootstrap: false` | 已知問題（upstream issue #4），沒修 |
@@ -101,13 +104,14 @@ Base：`eddie/main` @ 6115263。下表是 2026-10-13 改寫 trailer 之後的 ha
 - **cg 離所有訓練點都很遠**：cg 的 16 個 WC 都不為零，而每個訓練點最多只有 2 個 WC 不為零。r̂(cg) 必須由全部 153 個網路組合而成，每個網路的誤差都會進來。
 - **統計精度非常高**：truth 的 68% 區間只有 ±0.01–0.05（18 萬個 events），r̂ 只要有約 1% 的形狀偏差，就會讓 best fit 偏移好幾個 σ。
 
-### 下一步（2026-10-16 更新）
+### 下一步（2026-10-17 更新）
 
-1. **m_ttbar、pT 類 features 改用 log 後重訓**：4 個點 × 3 seeds（和 bs10k 同樣規模），看 1 TeV 以上的 calibration 和近 SM closure 是否改善。要改 feature 處理、送 condor。
-2. 如果 log 不夠：增加 tail 的訓練統計（tail 加權或過採樣），或在 tail 截斷。
-3. **修正 `--drop-negative` 依賴掃描範圍的問題**（tail 修好後，被丟掉的 events 應該也會變少）。
-4. 決定之後用 `weights_only` 還是 `stitched`（upstream 推薦 `weights_only`，需要 era 資訊，但 highlevel 資料沒有 era）；這也決定 23da3fd 要不要 port 到 `port/rebased`。
-5. 之後再回到 cg closure：leave-one-out 一致性、誤差容忍度、直接在 cg 訓練一個網路。
+1. ~~log features 重訓~~（嘗試 21）、~~log 網路的近 SM scan~~（嘗試 22）、~~weights_only + log 的 calibration~~（嘗試 23）。
+2. ~~wo_log_bs10k 在共同 events 上的近 SM fit~~（`output/common_fit_wo.txt`）：和 log_bs10k 幾乎一樣，seed 間差異大於 method 的差異。
+3. **讓 scan 的 event selection 和網路無關**（例如只依 truth 決定 drops，或固定的 m_tt 上限），scan 才能直接比較不同網路。`--drop-negative` 依賴掃描範圍的問題也一起解決。還在考慮。
+4. cQd8 在 1–2 TeV 的形狀問題（和 features、method 都無關）：增加 tail 的訓練統計（tail 加權或過採樣）、更大的網路，或檢查 r 在這段隨 m_ttbar 的變化。
+5. 決定之後用 `weights_only` 還是 `stitched`：calibration 上 weights_only 不差，ctGRe 明顯比較好；要再多 seeds 確認 ctGRe。選 weights_only 就不需要 23da3fd。
+6. 之後再回到 cg closure：leave-one-out 一致性、誤差容忍度、直接在 cg 訓練一個網路。
 
 ## 2026-10-13 晚上：overnight（`local/overnight_20261013.sh`，log：`output/overnight_20261013.log`）
 
@@ -158,5 +162,8 @@ Base：`eddie/main` @ 6115263。下表是 2026-10-13 改寫 trailer 之後的 ha
 | 18 | bs10k 的近 SM scan（4 個網路換成 bs10k，seeds 2、3、4 和平均） | cQd8：seed 間 std 從 0.7–6.7% 降到 0.1–1.6%，但仍一致偏小（−1.8 ~ −6.7%）；cQj11：seed 3 壞掉（`half_5p` 跳到 +0.365），平均 3 seeds 偏 +10 ~ +17.5% | bs10k 降低隨機誤差，但系統性偏差還在；cQj11 的異常當時無法解釋 |
 | 19 | 用 upstream metrics（`local/eval_metrics.py`）評估 24 個網路，按 m_ttbar 分段看 calibration | < 840 GeV（80% 的 events）±1%；1.0–1.3 TeV 低估 1–6%；1.3–2 TeV 高估 8–25%；> 2 TeV 高估 1–6.5 倍，一個 7 TeV 的 event r̂ = inf。除以 pg 與否只差 < 10% | **網路在高 m_ttbar 外推失準**；pg 不是原因 |
 | 20 | 近 SM scan 只用 m_ttbar < 1300 / < 2000 GeV 的 events（`local/scan_mttcap.sh`） | cQj11：全部 events 最多偏 21%，< 2000 ≤ 9%，< 1300 ≤ 3.5%（bs10k 的異常也消失）。cQd8：< 2000 小幅改善；< 1300 時 seed 2 在 ±2% 內，但平均 3 seeds 翻成 +4 ~ +6% | **確認 tail 是近 SM 偏差的主要來源**。cQd8 有兩個方向相反的來源（> 1.3 TeV 高估、1.0–1.3 TeV 低估），原本部分抵消。用 cut 修不可行 → log features 重訓 |
+| 21 | m_ttbar、pT 類 features 取 log 重訓（`log`、`log_bs10k`，各 4 個點 × 3 seeds，cluster 12555416），`eval_metrics.py` 依 m_ttbar 分段 | > 2 TeV 的高估：cQj11 從 +40 ~ +144% 降到 ≤ +30%；cQd8 從 +46 ~ +356% 降到 +70 ~ +145%。1.0–2 TeV 的偏差（cQd8 先低估後高估）沒變。< 1 TeV 不變（±2%） | **log 解決了大部分的外插**，對 cQj11 很有效；cQd8 在 1–2 TeV 還有外插以外的問題 |
+| 22 | log_bs10k 的近 SM scan，並在共同 events 上和 bs10k 比較（`local/common_events_fit.py`，所有變體、seeds 的 drops 取聯集） | 單看 scan：cQj11 變好，cQd8 變差（−3 ~ −22%）。共同 events 上：cQj11 bs10k −2.8 ~ −3.5%、log −3.2 ~ −5.0%；cQd8 bs10k −1.2 ~ −6.2%、log −1.0 ~ −8.0%；再切掉 > 2 TeV 後大多在 ±4% 內 | **scan 的差異來自 `--drop-negative` 丟掉不同的 events**，不是網路變差；bs10k 的 cQj11 +10 ~ +17.5% 也是這樣來的。log 和 linear 在同一組 events 上差不多 |
+| 23 | weights_only + log（`wo_log_bs10k`，port/rebased），4 個點 × 3 seeds + ctGRe 2 個點 × seed 2，和 log_bs10k 比 calibration | cQj11、cQd8：`rms_bias`、`pull`、m_ttbar 分段只小幅改善，在 seed 間差異之內；cQd8 1–2 TeV 的形狀一樣。ctGRe_ctGRe：`rms_bias` 0.029 → 0.012，< 1 TeV 的偏差從 −2 ~ −9% 降到 < 2% | method 不是 cQj11、cQd8 問題的原因；ctGRe 上 weights_only 明顯比較好（只有一個 seed） |
 
-結果資料夾：嘗試 17 `README_closure_ywk.md`「降低訓練的隨機誤差」；18 `output/nearSM_fine_bs10k_seeds{2,3,4,234}_*/`；19 `output/eval_metrics_a6ff4bd_bs10k.txt`；20 `output/nearSM_mtt{1300,2000}_*/`。
+結果資料夾：嘗試 17 `README_closure_ywk.md`「降低訓練的隨機誤差」；18 `output/nearSM_fine_bs10k_seeds{2,3,4,234}_*/`；19 `output/eval_metrics_a6ff4bd_bs10k.txt`；20 `output/nearSM_mtt{1300,2000}_*/`；21 `output/eval_metrics_{bs10k_mtt,log}.txt`（`README_closure_ywk.md`「Log features 重訓」）。

@@ -1,4 +1,4 @@
-# Closure study (ywk, 2026-10-12，2026-10-16 更新)
+# Closure study (ywk, 2026-10-12，2026-10-17 更新)
 
 Branch、環境和 condor 的基本設定見 `README_migration_note_ywk.md`。所有變更都只在 local，沒有 push。commit hash 新舊對照見同一份文件。
 
@@ -18,6 +18,9 @@ Branch、環境和 condor 的基本設定見 `README_migration_note_ywk.md`。�
 4. **近 SM closure 的系統性偏差主要來自網路在高 m_ttbar 的 calibration**（2026-10-16，見最後兩節）。
    - 1.3–2 TeV r̂ 高估 8–25%，2 TeV 以上高估 1–6.5 倍；1.0–1.3 TeV 反而低估 1–6%。840 GeV 以下（80% 的 events）在 ±1% 內。
    - validation 只保留 m_ttbar < 1300 GeV 時，cQj11 的偏差從最多 21% 降到 ≤ 3.5%；cQd8 從 −4 ~ −12% 翻成 +4 ~ +6%（只剩 1.0–1.3 TeV 的低估）。
+   - **log features 重訓**（最後兩節）：cQj11 在 > 2 TeV 的高估從最多 +144% 降到 ≤ +30%；cQd8 只減半（仍約 2 倍），1.0–2 TeV 的偏差沒變。
+   - **scan 不能直接比較不同網路**：`--drop-negative` 丟掉的 events 隨網路改變（tail 越差丟越多）。在共同 events 上 log 和 linear 差不多，平均 3 seeds 偏 −8 ~ −1%（「近 SM scan」一節）。
+   - **weights_only** 對 cQj11、cQd8 只有小幅改善，cQd8 在 1–2 TeV 的形狀不變；ctGRe_ctGRe 明顯比較好（最後一節）。
 5. **不同訓練設計在 cg 的放大倍數 ‖a‖₂**（越小越好）：
 
    | 設計 | ‖a‖₂ |
@@ -270,3 +273,140 @@ best fit 相對 data 的偏差（cQj11 的 data 是負值，「+」表示絕對�
 - **cQd8**：有兩個方向相反的來源。> 1.3 TeV 高估 → cQd8 偏小；1.0–1.3 TeV 低估 → cQd8 偏大。原本部分抵消；切掉 tail 後只剩後者，所以翻成 +4 ~ +6%（bs10k 在 1.0–1.3 TeV 低估最多，翻得也最多）。網路在 1 TeV 以上整段都沒學好 r 隨 m_ttbar 成長的形狀。
 - 大部分仍在 68% 區間外：16–17 萬個 events 的區間很窄，1–3% 就會超出。
 - 用 cut 修不可行（cQd8 會變成偏大，也丟掉最敏感的區域）→ 下一步是 log features 重訓。
+
+## Log features 重訓（2026-10-16，cluster 12555416，24/24 成功）
+
+- 資料：`local/make_log_features.py` 把 m_ttbar 取 log，pt_tt、lep_top_pt、had_top_pt 取 log(1+x)，其他欄位、coefs、event 順序都不變 → `/eos/cms/store/user/ykao/topsbi/pretraining_main_highlevel_log/`，features 檔 `features_highlevel_log.yml`（名稱加 `log_`）。m_ttbar 的最大 z 從 18 降到 5.9，pT 類從 16–19 降到約 4。
+
+**自己準備 log features（manual）**：在 lxplus 的主目錄執行（train.p 有 1.8 GB，會整個讀進記憶體）。
+
+```bash
+cd /eos/home-y/ykao/SWAN_projects/analysis/topsbi
+source /cvmfs/sft.cern.ch/lcg/views/LCG_109_cuda/x86_64-el9-gcc13-opt/setup.sh
+D=/eos/cms/store/user/ykao/topsbi
+python3 local/make_log_features.py $D/pretraining_main_highlevel $D/pretraining_main_highlevel_log \
+    features_highlevel.yml features_highlevel_log.yml
+```
+
+- 輸入：原本資料夾裡的 `train.p`、`test.p`、`validation.p`，以及原本的 features 檔。輸出：新資料夾裡同名的三個檔，以及新的 features 檔。
+- 要取 log 的欄位寫在 script 開頭的 `LOG`（m_ttbar 用 `log`，其他用 `log1p`）；要加減欄位就改這裡。欄位位置從 features 檔的 `loc` 讀，所以換資料集時不用改程式碼。
+- 新的 features 檔只改這幾個欄位：名稱加上 `log_`，`label` 加上 log，`min`/`max` 改成 log 尺度（只影響畫圖的範圍）。
+- 檢查：script 會印出 train 裡這幾個欄位的 z 範圍，m_ttbar 的最大值應該約 5.9；三個輸出檔的大小應該和原本的一樣。
+- 訓練 config 改兩個地方：`data:` 指到新的資料夾，`features:` 指到新的 features 檔。weights_only 的話，`holdout:` 也要一起改。
+- 推論時，網路要吃轉換過的 input。用原本的 linear 資料評估時，要先做同樣的轉換（`local/truth_morph_scan.py`、`local/common_events_fit.py` 會依 features 檔裡的 `log_*` 自動轉換）。`local/eval_metrics.py` 不會轉換，它直接讀第一個 config 的資料，所以 log 和 linear 的網路要分開跑。
+- 訓練：port/dev 的程式碼（`port-209ba10`，stitched），只換 features，和 baseline、bs10k 可以直接比較。`log`（batch 1000）和 `log_bs10k` 各 4 個點 × seeds 2、3、4。configs 在 `local/condor/configs/log/`，CPU 版本 `local/cpu_configs/log/`。
+
+```bash
+cd ~/topsbi-condor && condor_submit code=/eos/home-y/ykao/SWAN_projects/analysis/topsbi-wt/port-209ba10 \
+    configlist=list_log.txt submit_list.sub   # 已執行
+# 評估（eval_metrics.py 加上了依 m_ttbar 分段的表；linear 和 log 的網路要分開跑，因為只讀第一個 config 的資料）
+setsid nohup bash local/eval_log.sh > output/eval_log.log 2>&1 < /dev/null &
+# → output/eval_metrics_bs10k_mtt.txt、output/eval_metrics_log.txt
+```
+
+依 m_ttbar 分段的 Σw0·r̂ / Σw0·r − 1（xsec 權重，3 個 seeds 的範圍）：
+
+| 點 | m_ttbar | bs10k（linear） | log_bs10k | log（batch 1000） |
+|---|---|---|---|---|
+| SM→cQj11 | 1.3–2 TeV | −5 ~ −8% | −3 ~ −11% | −14 ~ −16% |
+| | > 2 TeV | **+66 ~ +110%** | **+3 ~ +29%** | −4 ~ −11% |
+| cQj11→cQj11 | 1.3–2 TeV | −12 ~ +4% | −6 ~ −8% | −4 ~ −7% |
+| | > 2 TeV | **+40 ~ +144%** | **+8 ~ +12%** | +4 ~ +20% |
+| SM→cQd8 | 1.0–1.3 TeV | −2 ~ −3% | −2 ~ −4% | −3% |
+| | 1.3–2 TeV | +10 ~ +11% | +8 ~ +11% | +4 ~ +13% |
+| | > 2 TeV | **+46 ~ +158%** | **+79 ~ +112%** | +37 ~ +69% |
+| cQd8→cQd8 | 1.0–1.3 TeV | −3 ~ −6% | −3 ~ −7% | −3 ~ −4% |
+| | 1.3–2 TeV | +8 ~ +19% | +9 ~ +16% | +14 ~ +17% |
+| | > 2 TeV | **+170 ~ +356%** | **+70 ~ +145%** | +66 ~ +196% |
+
+- < 1 TeV（約 85% 的 events）：兩種 features 都在 ±2% 內。r̂ = inf 的 event 從 1 個變 0 個。
+- **cQj11**：> 2 TeV 的高估從最多 +144% 降到 ≤ +30%。`rms_bias` 也下降（log_bs10k 0.005–0.011，bs10k 0.008–0.026），但 `pull` 仍 2–5。
+- **cQd8**：> 2 TeV 約減半，仍高估約 2 倍；1.0–1.3 TeV 低估、1.3–2 TeV 高估的模式和 linear 完全一樣 → 除了外插，cQd8 還有別的原因（推測：r 在這段隨 m_ttbar 上升很快，網路沒學到；未驗證）。
+- log 和 log_bs10k 差不多；log 的 SM→cQj11 seed 3 較差（pull 7.6），bs10k 仍然比較穩。
+
+### 近 SM scan（`local/scan_log.sh`）
+
+- ensemble 是 153 個網路一起解 lstsq，只有這 4 個點有 log 版本。`local/truth_morph_scan.py` 的 `Network` 會把 linear 的 input 轉成 log 再餵給 features 檔有 `log_*` 的網路（驗證：和直接用 log 資料的輸出完全相同），其他 149 個網路不變。
+- ensemble：`local/ensemble_log_bs10k_cpu.yml`（`ensemble_bs10k_cpu.yml` 把 4 個點換成 `local/cpu_configs/log/log_bs10k_*`）。
+- 設定和 `local/scan_bs10k.sh` 相同；結果在 `output/nearSM_fine_log_bs10k_seeds{2,3,4,234}_{on_5p,half_5p,10p}/`，對照 `output/nearSM_fine_bs10k_seeds*`。
+
+```bash
+setsid nohup bash local/scan_log.sh > output/scan_log.log 2>&1 < /dev/null &
+```
+
+12 個 scan 都成功（`output/scan_log.log`）。單看 scan，log 讓 cQj11 變好、cQd8 變差（cQd8 平均 3 seeds 從 −2 ~ −7% 變成 −3 ~ −22%）。**但這個比較不公平：**
+
+- `--drop-negative` 丟掉「grid 上任何一點 morph 後 r ≤ 0」的 events，幾乎都是 m_tt > 1.3 TeV。tail 越差，丟得越多，丟掉的又正好是最會拉偏 fit 的 events → **越差的網路被「美化」得越多**，不同網路的 scan 用的是不同的 events。
+- 例：cQd8 seed 2 on_5p，bs10k 丟 552 個（544 個 m_tt > 1.3 TeV），log_bs10k 只丟 140 個。
+
+**共同 events 的比較（`local/common_events_fit.py`）**：只有其他 WC 在 SM 時，r(c) = 1 + γx·c + γxx·c² 只由 `SM_<wc>` 和 `<wc>_<wc>` 兩個網路決定，所以可以不載入 ensemble，直接重現 scan.py 的 best fit（yield ratio、drops、每個 grid 點 E_p0[r] = 1、pseudo-data weights；`own` 欄和 scan 的結果一致）。再把所有變體、seeds 的 drops 取聯集，在同一組 events 上 fit（`common`，約 700–1000 個 events，95% 以上 m_tt > 1.3 TeV），以及再加上 m_tt < 2 TeV（`common<2TeV`）。
+
+```bash
+setsid nohup bash local/common_fit_log.sh > output/common_fit_bs10k_log.txt 2>&1 < /dev/null &
+```
+
+平均 3 seeds，best fit 相對 data 的偏差（own → common → common<2TeV）：
+
+| WC | data | bs10k | log_bs10k |
+|---|---|---|---|
+| cQj11 | on_5p | +12.0 → −2.8 → +1.7% | +2.5 → −4.2 → −0.2% |
+| | half_5p | +17.3 → −3.5 → +3.5% | +7.0 → −3.2 → +3.2% |
+| | 10p | +10.0 → −3.0 → +0.7% | +1.0 → −5.0 → −1.8% |
+| cQd8 | on_5p | −5.5 → −5.0 → −2.5% | −15.5 → −5.3 → −2.0% |
+| | half_5p | −6.7 → −6.2 → −4.0% | −22.2 → −8.0 → −4.2% |
+| | 10p | −1.8 → −1.2 → +0.3% | −3.2 → −1.0 → +1.0% |
+
+- **在同一組 events 上，log 和 linear 差不多**。scan 看到的「log 讓 cQd8 變差」完全是 drops 不同造成的；bs10k 原本的 cQj11 +10 ~ +17.5%（含 seed 3 的 +150%）在共同 events 上也消失（seed 3 half_5p：−5.5%）。
+- 再切掉 > 2 TeV 後，大多在 ±4% 內；剩下的偏差來自 2 TeV 以上，和 `eval_metrics.py` 的分段表一致。
+- 單一 seed 的 common 偏差：bs10k −8 ~ 0%，log_bs10k −8.5 ~ +2.3%，seed 間差異仍然存在。
+- **結論：scan 的數字不能直接拿來比較不同網路**，除非 event selection 和網路無關（見 `README_summary_ywk.md` 的下一步）。
+
+## weights_only 和 ctGRe（2026-10-16 送出，cluster 12559217 / 12559218）
+
+- `wo_log_bs10k`：log features + `method: weights_only`，port/rebased 的程式碼（`port-d11cea0`），4 個點 × seeds 2、3、4，加上 ctGRe 的 2 個點 × seed 2，共 14 個。和 `log_bs10k` 比較；兩邊程式碼不同（port/dev vs port/rebased），差很多時不一定是 method 造成的。
+- 新的 config keys：`year_loc: null`、`lumi: [1.0]`（單一 era，lumi 的值不影響訓練）、`group_cols: []`、`holdout: <data>/validation.p`。
+- `log_bs10k` 的 ctGRe 2 個點 × seed 2（`port-209ba10`）。ctGRe 不是四費米子算符，效應隨能量上升較溫和：用來檢查 log features 和 weights_only 是否對不同類型的算符都有效。
+- configs：`local/condor/configs/wo/`、`local/condor/configs/log/log_bs10k_*ctGRe*`；清單 `~/topsbi-condor/list_wo_log.txt`、`list_ctgre_log.txt`。`wo_bs10k`（linear）的 configs 也在 `wo/`，決定不送。
+
+```bash
+cd ~/topsbi-condor
+condor_submit code=/eos/home-y/ykao/SWAN_projects/analysis/topsbi-wt/port-d11cea0 configlist=list_wo_log.txt submit_list.sub    # 已執行
+condor_submit code=/eos/home-y/ykao/SWAN_projects/analysis/topsbi-wt/port-209ba10 configlist=list_ctgre_log.txt submit_list.sub  # 已執行
+```
+
+### 結果：calibration（2026-10-17，`local/eval_wo.sh` → `output/eval_metrics_wo_log.txt`）
+
+16 個 jobs 都成功。`eval_metrics.py` 對 weights_only 網路改和沒有 normalize 的 w1/w0 比較（它學的就是這個；E_p0[r̂] = 1.053，yield ratio 1.050），stitched 網路照舊和 p1/p0 比較。
+
+| 點 | rms_bias stitched | rms_bias wo | pull stitched | pull wo | > 2 TeV stitched | > 2 TeV wo |
+|---|---|---|---|---|---|---|
+| SM_cQj11 | 0.005–0.011 | **0.000** | 2.5–4.9 | 1.9–3.4 | +2.5 ~ +29% | −2 ~ +17% |
+| cQj11_cQj11 | 0.005–0.008 | 0.000–0.010 | 2.2–3.4 | 1.7–3.9 | +8 ~ +12% | −5 ~ +14% |
+| SM_cQd8 | 0.015–0.023 | 0.013–0.025 | 0.5–0.8 | 0.5–0.8 | +79 ~ +112% | +67 ~ +117% |
+| cQd8_cQd8 | 0.011–0.027 | 0.014–0.023 | 0.4–1.8 | 0.4–0.95 | +70 ~ +145% | +68 ~ +127% |
+| SM_ctGRe（s2） | 0.0008 | 0.0014 | 0.21 | 1.12 | −0.1% | +0.2% |
+| ctGRe_ctGRe（s2） | 0.029 | **0.012** | 0.11 | 0.14 | +12% | +36% |
+
+（stitched = log_bs10k，wo = wo_log_bs10k；都用 log features，seeds 2、3、4 的範圍；`rms_bias` 已扣掉雜訊，0.000 表示小於雜訊。）
+
+- **cQj11、cQd8**：wo 只有小幅改善，在 seed 間差異之內。cQd8 在 1.0–1.3 TeV 低估、1.3–2 TeV 高估、> 2 TeV 約 2 倍的形狀兩種 method 都一樣 → **不是 stitched 造成的**。
+- **ctGRe_ctGRe**（AUC 0.69，最好區分的點）：差別最明顯。stitched 每一段都偏（< 2 TeV 是 −2 ~ −24%），wo 在 1 TeV 以下 < 2%、1–2 TeV ±7%。只有一個 seed。
+- SM_ctGRe 兩邊都 ≤ 0.4%；wo 的 pull 較大但 `rms_bias` 只有 0.0014，可以忽略。
+- 兩邊程式碼版本不同（port/dev vs port/rebased），差異不一定全部來自 method。
+
+### 結果：共同 events 的近 SM fit（2026-10-17，`output/common_fit_wo.txt`）
+
+`common_events_fit.py` 加了 weights_only 的處理（不乘 yield ratio），`local/common_fit_log.sh` 加入 wo_log_bs10k。共同 events 是三個變體 drops 的聯集（多了約 30–90 個），所以 bs10k、log_bs10k 的數字和上一節差 ≤ 0.5%。平均 3 seeds（own → common → common<2TeV）：
+
+| WC | data | log_bs10k | wo_log_bs10k |
+|---|---|---|---|
+| cQj11 | on_5p | +2.5 → −4.2 → −0.2% | +1.0 → −4.5 → −0.5% |
+| | half_5p | +7.0 → −3.2 → +3.2% | +2.8 → −5.5 → +1.5% |
+| | 10p | +1.0 → −5.0 → −1.8% | 0.0 → −4.7 → −1.5% |
+| cQd8 | on_5p | −15.5 → −5.5 → −2.2% | −14.8 → −5.0 → −2.0% |
+| | half_5p | −22.2 → −8.5 → −4.5% | −21.2 → −8.0 → −4.5% |
+| | 10p | −3.2 → −1.2 → +0.8% | −2.7 → −0.8 → +0.8% |
+
+- **weights_only 和 stitched 在近 SM fit 上幾乎一樣**，和 calibration 的結論一致。
+- wo 的 seed 3 特別好（cQd8 −1.5 ~ +1.2%），seeds 2、4 和 log_bs10k 差不多：seed 間差異仍大於 method 的差異。
+- wo 自己丟掉的 events 更少（平均 3 seeds：cQj11 23 個，log_bs10k 86 個），所以和 log_bs10k 一樣，cQd8 的 own 被留下來的 tail 拉偏到 −15 ~ −21%。

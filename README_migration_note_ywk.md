@@ -44,7 +44,9 @@ Eddie 改寫了 main 的歷史（例如 ff65ac6 → 74d9de9），共同祖先退
 
 upstream 仍然沒有：任何 `.eval()`（dropout 在 test loss、early stopping、likelihood 都開著）、SM row 長度、toy_builder 計數、BatchSampler/`no_grad`、`bootstrap_seed`、scan/SHAP 工具。
 
-**`port/rebased`**（worktree `../topsbi-wt/rebased`，從 eddie/main a733f77 開始，30 tests passed、ruff 通過，沒有 push）：
+**`port/rebased`**（worktree `../topsbi-wt/rebased`，從 eddie/main a733f77 開始，31 tests passed、ruff 通過，沒有 push）：
+
+目前狀態和每個 commit 的 PR 進度以主目錄的 `README_upstream_status_ywk.md`（untracked，定期回顧）為準；下表是 port 的來源。
 
 | commit | 來源 | 處理 |
 |---|---|---|
@@ -55,11 +57,17 @@ upstream 仍然沒有：任何 `.eval()`（dropout 在 test loss、early stoppin
 | de052ee | a0ca919 | `bootstrap_seed`，手動 port |
 | 37f7194、006dbec、3af0a5f、8edcd0d | 82b6d7e、7b0126d、dbcb604、992aad9 | scan 和 SHAP 工具，直接 cherry-pick |
 | 769f3b4 | 新增 | `scan.py` 改用 upstream 的 `get_probabilities`（不用 cg）；ruff format |
-| 72da891 | 743ca09 | README notes |
+| 3b4c6cf | 743ca09 | README notes |
+| 2e7efd8 | 新增 | `year_loc: null`：沒有 year 欄位的單一 era 資料，所有 events 用 `lumi[0]`（weights_only 用） |
+| d11cea0 | 新增 | `group_cols`：closure 分組欄位可設定，`[]` 為單一組（upstream 寫死 21、19，13 欄的資料會 IndexError） |
 
 沒放進去：b31f197、dabf409、CI 修正（已被取代）；c796612、0004d96（stitched 語意已改）；**23da3fd**（只適用 stitched，用在 weights_only 會重複乘 yield ratio；等決定 method 再處理）。
 
-PR 的順序要重新規劃（`README_planned_prs.md` 已過時）：e2e3b47（dropout，影響 upstream 的結果）→ 045b3dd + bccb0ab → 8e4bdc3 → 工具 → 23da3fd 先和 Eddie 討論。
+固定版本的 worktree：`../topsbi-wt/port-d11cea0`（weights_only 的訓練用）。
+
+**PR #16**（2026-10-16，branch `pr/eval-dropout`，從 eddie/main 2b1c033 開始）：dropout `eval()`（6e55cd9）+ toy_builder（5638eaa）+ train/test loss 對齊（新的，port/rebased 沒有）。之後 PR B（`year_loc`、`group_cols`）、PR C（BatchSampler/`no_grad`、`bootstrap_seed`）視需要再開。
+
+**eddie/main 2b1c033**（drop zero cols in gamma，port/rebased 還沒包含）：`zero_terms`、`get_probabilities` 改 float64，`full_likelihood` **必須有 `sm` 網路**（我們的 ensemble 沒有，scan 會壞；要和 Eddie 討論 c0 = SM 時能否省略）。等 PR #16 merge 後再一起 rebase。
 
 ### Commit hash 對照（2026-10-13）
 
