@@ -155,8 +155,44 @@ yield ratio Y(c)/Y(SM) 在 2.5% 點（NN vs validation 上的 truth）。WC 值�
 
 接下來的診斷 2（重新校準 r̂）要確認偏差是不是 calibration 造成的。
 
+### 診斷 2：重新校準 r̂，以及 MC 統計漲落（2026-10-18）
+
+Script：主目錄 `local/scan_recalib.py`。輸出：`/eos/user/y/ykao/www/topsbi/scan_pilot_20261018/recalib_data2.5p/`（`<wc>_recalib.{png,yml}`）。pseudo-data 和期望 best fit 同上（2.5% 點，其他 WC = 0）。
+
+做法：
+- **重新校準**：validation.p 分成兩半。
+  - 在偶數 events 上，依 data 點的 r̂ 分 quantile bins（20、50、200 個），每個 bin 的 r̂(c) 換成 E_SM[t(c) | bin]。
+  - 套到奇數 events 上，只用奇數 events scan。
+  - bins 在所有 c 固定，所以曲線是平滑的。第一版每個 c 重新分 bins，大 weight 的 events 會換 bin，曲線鋸齒狀、best fit 不可靠，已經改掉。
+  - 另外對 truth 本身做同樣的分 bin（「truth recalibrated」），當作這個方法本身的雜訊。
+- **MC 漲落**：同一個 ensemble、同樣的 likelihood，只用 4 個互不重疊的子樣本（event index mod 4）各自 scan，看 NN best fit 的分散。
+
+結果（best fit；期望值 = 2.5% 點的 WC 值）：
+
+| | 期望 | NN 全部 | NN 奇數半 | NN 偶數半 | NN 4 個子樣本 | 重新校準 20 / 50 / 200 bins（奇數半） | truth 分 50 bins |
+|---|---|---|---|---|---|---|---|
+| ctGIm | −0.6405 | −0.650 | −0.663 | −0.634 | −0.609, −0.663, −0.660, −0.663 | −0.660 / −0.663 / −0.650 | −0.647 |
+| ctGRe | −0.0778 | −0.0786 | −0.0790 | −0.0786 | −0.0782, −0.0790, −0.0786, −0.0790 | −0.0782 / −0.0782 / −0.0782 | −0.0778 |
+| cQj11 | −1.0531 | −0.979 | −0.900 | −1.079 | −0.969, −0.869, −1.201, −0.953 | −1.032 / −0.995 / −0.879 | −1.037 |
+| cQd8 | 2.7044 | 2.353 | 2.204 | 2.556 | 2.515, 1.880, 2.596, 2.840 | 2.772 / 2.799 / 2.610 | 2.664 |
+
+**結論**：
+1. **cQj11、cQd8 的「偏差」和 MC 統計漲落同樣大**。
+   - 4 個子樣本的分散：cQj11 約 ±0.14，cQd8 約 ±0.4。換算到全部樣本大約是 ±0.07、±0.2。
+   - 全部樣本的偏差：cQj11 0.074、cQd8 0.35，大約 1σ、1.7σ。
+   - 奇數、偶數兩半就差了 0.18、0.35。
+2. **scan 的 ci68 嚴重低估了這個 closure test 的不確定度**。
+   - pseudo-data 是同一批 MC events reweight 出來的，所以 truth 在任何子樣本上都剛好落在期望值。
+   - NN 的 best fit 則由少數大 weight、t 和 r̂ 差很多的 qq̄ events 決定（見 `README_featsets_ywk.md`：cQj11 0.01% 的 events 佔 Var(α) 的 50%）。
+   - ci68 只反映 Σw 個「data events」的 Poisson 統計，不包含這些 MC events 本身的漲落。
+3. **重新校準**：20、50 bins 讓 cQj11、cQd8 靠近期望值（−1.03 / −1.00、2.77 / 2.80），200 bins 又離開（每個 bin 的 events 太少，校準本身有雜訊）。truth 自己分 50 bins 也偏了 0.016、0.04。這些變化都在上面 MC 漲落的範圍內，**所以不能說是 calibration 的問題，也不能排除**。
+4. ctGRe：子樣本分散只有 ±0.0004，偏差 0.0008，沒有問題。ctGIm：分散約 ±0.025，偏差 0.01，沒有問題。
+5. **診斷 1 的「NN shape 偏差」也要用同樣的方式解讀**：cQj11、cQd8 的資訊幾乎都在 shape，而 shape 正是被大 weight events 主導的部分。
+
 ### 診斷的待辦
 
 - [x] 把 −2ΔlnL 拆成 rate 和 shape：偏差來自 NN 的 shape 項（上面）。
-- [ ] 重新校準的 r̂：在 r̂ 的 quantile bins 裡把 r̂ 換成 E[t | bin]，再 scan。偏差消失的話，就是 calibration 的問題。
-- [ ] 換 pseudo-data 點（0.5%、1%、SM），看偏差是不是和 |c| 成比例。
+- [x] 重新校準 r̂：結果在 MC 漲落範圍內，無法判定（上面）。
+- [ ] **closure test 的不確定度**：用 bootstrap（對 events 重抽，算 NN best fit 的分布）估計 MC 漲落，再看偏差有幾個 σ。這比 scan 的 ci68 更適合判斷 closure。
+- [ ] 換 pseudo-data 點（0.5%、1%、SM），看偏差是不是和 |c| 成比例；也要附上 bootstrap 的不確定度。
+- [ ] 如果要降低漲落：用更多 MC（train.p 也拿來當 pseudo-data，網路沒有看過的部分只有 validation.p，要小心），或者看大 weight events 的處理。
