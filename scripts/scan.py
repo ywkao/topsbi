@@ -1,4 +1,4 @@
-from topsbi.tools.buildLikelihood import full_likelihood
+from topsbi.tools.buildLikelihood import ensemble, full_likelihood
 from topsbi.tools.data import get_lower_tri, get_probabilities
 
 import matplotlib.pyplot as plt
@@ -45,17 +45,34 @@ def robust_nll(r, threshold, weights=None):
     return -2 * (np.log(r) if weights is None else weights * np.log(r)).sum()
 
 
-def truth_ratio(coefficients, point, cg):
-    """Per-event analytic p1/p0 from the quadratic fit coefficients, c0 = SM."""
-    c0 = [1.0] + [0.0] * (len(point) - 1)
-    p0, p1 = get_probabilities(coefficients, {'c0': c0, 'c1': point})
+def weight(coefficients, point):
+    """Per-event w(point) = coefs @ T(point), float64."""
+    return (coefficients.to(torch.float64) @ get_lower_tri(point, dtype=torch.float64)).cpu().numpy()
+
+
+def sm_point(n_wcs):
+    return [1.0] + [0.0] * n_wcs
+
+
+def truth_ratio(coefficients, point, method):
+    """
+    Per-event analytic ratio to SM, what the networks learn:
+    weights_only: w(point)/w(SM), rate included; stitched: p1/p0, each normalized by its mean (shape only).
+    """
+    if method == 'weights_only':
+        return weight(coefficients, point) / weight(coefficients, sm_point(len(point) - 1))
+    p0, p1 = get_probabilities(coefficients, {'c0': sm_point(len(point) - 1), 'c1': point})
     return (p1 / p0).cpu().numpy()
 
 
-def data_weights(coefficients, point, cg):
-    """Per-event w(point), mean 1: reweights the stitched sample into pseudo-data at `point`."""
-    weights, _ = get_probabilities(coefficients, {'c0': point, 'c1': point})
-    return weights.cpu().numpy().astype(np.float64)
+def data_weights(coefficients, point, method):
+    """
+    Per-event pseudo-data weights at `point`, reweighting the sample:
+    weights_only: w(point)/mean(w(SM)), so the total is N * Y(point)/Y(SM) (the rate enters the extended likelihood);
+    stitched: w(point)/mean(w(point)), mean 1.
+    """
+    w = weight(coefficients, point)
+    return w / (weight(coefficients, sm_point(len(point) - 1)).mean() if method == 'weights_only' else w.mean())
 
 
 def summarize(grid, nll):
@@ -103,9 +120,26 @@ def plot_scan(grid, nll, nll_true, wc, path, xlim=None, ylim=None):
 
 
 def scan_wc(
-    plr, coefficients, wcs, cg, wc, wc_min, wc_max, npoints, output, threshold, truth, base, drop_negative, data=None
+    plr,
+    coefficients,
+    wcs,
+    cg,
+    wc,
+    wc_min,
+    wc_max,
+    npoints,
+    output,
+    threshold,
+    truth,
+    base,
+    drop_negative,
+    data=None,
+    method='weights_only',
 ):
     """
+    `method`: weights_only networks learn w(c)/w(SM), so -2 ln L is extended,
+    -2 sum(w_data log r(c)) + 2 sum(w_SM r(c)) (the second term is the expected yield, N Y(c)/Y(SM));
+    stitched networks learn the shape ratio p1/p0, so -2 ln L = -2 sum(w_data log r(c)).
     `base`: SM-inclusive point the other WCs are held at (SM, or cg for a closure test).
     `data`: SM-inclusive point to reweight the sample to as pseudo-data (None: the raw sample, i.e. data at cg);
     for a closure test the minimum should then sit at data.
@@ -122,9 +156,17 @@ def scan_wc(
         points.append(point)
     # [npoints, n_events]; ~140 MB each for 200 points x 180k events
     r = np.stack([plr(p).detach().cpu().numpy() for p in points])
-    t = np.stack([truth_ratio(coefficients, p, cg) for p in points]) if truth else None
+    t = np.stack([truth_ratio(coefficients, p, method) for p in points]) if truth else None
 
-    w = None if data is None else data_weights(coefficients, data, cg)
+    if data is None and method == 'weights_only':
+        data = cg  # the raw sample is distributed as at cg; weights_only needs it as explicit weights for the rate
+    w = None if data is None else data_weights(coefficients, data, method)
+    w_sm = weight(coefficients, sm_point(len(wcs)))
+    negative = (r <= 0).any(0)
+    n_negative, negative_frac = int(negative.sum()), float(w_sm[negative].sum() / w_sm.sum())
+    print(
+        f'[{wc}] {n_negative}/{negative.size} events with r <= 0 somewhere on the grid, {negative_frac:.2e} of the SM weight'
+    )
     n_dropped = 0
     if drop_negative:
         keep = (r > 0).all(0) & ((t > 0).all(0) if truth else True) & (True if w is None else w > 0)
@@ -134,15 +176,23 @@ def scan_wc(
         # restore E_p0[r] = 1 on the subset; get_probabilities does the same for truth below
         p0 = (sub @ get_lower_tri([1.0] + [0.0] * len(wcs), dtype=sub.dtype)).numpy()
         r = r[:, keep]
-        r *= (p0.mean() / (r * p0).mean(1))[:, None]
+        if method != 'weights_only':
+            r *= (p0.mean() / (r * p0).mean(1))[:, None]
         if truth:
-            t = np.stack([truth_ratio(sub, p, cg) for p in points])
+            t = np.stack([truth_ratio(sub, p, method) for p in points])
         if w is not None:
-            w = data_weights(sub, data, cg)
+            w = data_weights(sub, data, method)
+        w_sm = w_sm[keep]
 
-    nll = np.array([robust_nll(x, threshold, w) for x in r])
-    # same winsorization as the ensemble so the two curves differ only by the NN
-    nll_true = np.array([robust_nll(x, threshold, w) for x in t]) if truth else np.zeros(npoints)
+    def nll_of(ratios):
+        # same winsorization for the ensemble and the truth so the two curves differ only by the NN
+        nll = np.array([robust_nll(x, threshold, w) for x in ratios])
+        if method == 'weights_only':
+            nll += 2 * (ratios * (w_sm / w_sm.mean())).sum(1)
+        return nll
+
+    nll = nll_of(r)
+    nll_true = nll_of(t) if truth else np.zeros(npoints)
     nll -= nll.min()
     nll_true -= nll_true.min()
 
@@ -151,7 +201,14 @@ def scan_wc(
     # raw curves, so replot_scan.py can re-zoom without reloading the ensemble
     np.savez(f'{output}/{wc}_scan.npz', grid=grid, nll=nll, **({'nll_true': nll_true} if truth else {}))
 
-    summary = {'wc': wc, 'n_dropped': n_dropped, **summarize(grid, nll)}
+    summary = {
+        'wc': wc,
+        'method': method,
+        'n_negative': n_negative,
+        'negative_sm_weight_frac': negative_frac,
+        'n_dropped': n_dropped,
+        **summarize(grid, nll),
+    }
     if data is not None:
         summary['data'] = float(data[idx + 1])
     if truth:
@@ -174,6 +231,7 @@ def main(
     drop_negative,
     data_values,
     window=None,
+    method=None,
 ):
     with open(parametric) as f:
         config = yaml.safe_load(f)
@@ -184,11 +242,19 @@ def main(
     features = features.float()
 
     # loading the ensemble dominates the runtime, so do it once for all WCs
-    plr = full_likelihood(config, features)
+    # `seeds`: {seed: {sm, networks}}, averaged by ensemble; otherwise one set of networks (sm + networks)
+    if 'seeds' in config:
+        plr = ensemble(config, features)
+        first = config['seeds'][next(iter(config['seeds']))]['networks'][0]
+    else:
+        plr = full_likelihood(config, features)
+        first = config['networks'][0]
     coefficients = coefficients[plr.infFilter]
-    with open(config['networks'][0]) as f:
+    with open(first) as f:
         network = yaml.safe_load(f)
     cg, wcs = network['cg'], network['wcs']
+    method = method or network.get('method', 'stitched')
+    print(f'[INFO] {method} networks')
     base = cg if others == 'cg' else [1.0] + [0.0] * len(wcs)
     if data_values:
         with open(data_values) as f:
@@ -208,7 +274,9 @@ def main(
             lo, hi = center - half, center + half
         lo = lo if wc_min is None else wc_min
         hi = hi if wc_max is None else wc_max
-        scan_wc(plr, coefficients, wcs, cg, wc, lo, hi, npoints, output, threshold, truth, base, drop_negative, data)
+        scan_wc(
+            plr, coefficients, wcs, cg, wc, lo, hi, npoints, output, threshold, truth, base, drop_negative, data, method
+        )
 
 
 if __name__ == '__main__':
@@ -260,6 +328,14 @@ if __name__ == '__main__':
         help='scan data (or cg) +- window * |value| per WC instead of default_range; --min/--max still override',
     )
 
+    parser.add_argument(
+        '--method',
+        choices=['weights_only', 'stitched'],
+        default=None,
+        help='what the networks learned, which sets the truth, pseudo-data weights and likelihood; '
+        'default: method in the first network config',
+    )
+
     args = parser.parse_args()
     main(
         args.parametric,
@@ -274,4 +350,5 @@ if __name__ == '__main__':
         args.drop_negative,
         args.data_values,
         args.window,
+        args.method,
     )
