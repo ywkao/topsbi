@@ -193,6 +193,96 @@ Script：主目錄 `local/scan_recalib.py`。輸出：`/eos/user/y/ykao/www/tops
 
 - [x] 把 −2ΔlnL 拆成 rate 和 shape：偏差來自 NN 的 shape 項（上面）。
 - [x] 重新校準 r̂：結果在 MC 漲落範圍內，無法判定（上面）。
-- [ ] **closure test 的不確定度**：用 bootstrap（對 events 重抽，算 NN best fit 的分布）估計 MC 漲落，再看偏差有幾個 σ。這比 scan 的 ci68 更適合判斷 closure。
-- [ ] 換 pseudo-data 點（0.5%、1%、SM），看偏差是不是和 |c| 成比例；也要附上 bootstrap 的不確定度。
+- [x] closure test 的不確定度：bootstrap（下面）。
+- [x] 換 pseudo-data 點（0.5%、1%）：bootstrap 一起做了（下面）。SM 還沒做（`--window` 以 |c| 為單位，c = 0 時要另外指定範圍）。
+
+### 診斷 3：bootstrap 的 closure 不確定度（2026-10-18）
+
+Script：主目錄 `local/scan_bootstrap.py`。輸出：`/eos/user/y/ykao/www/topsbi/scan_pilot_20261018/bootstrap/`（`<wc>_bootstrap.{png,yml}`）。
+
+做法：
+- 500 個 replicas，每個 event 有 Poisson(1) 的重數 k，同時乘在 pseudo-data 和 SM weights 上，再重新找 NN 的 best fit。
+- 任何 k 下 truth 的最小值都剛好在 data 點（推導：c = data 時 d(−2 ln L)/dc = Σ k w_SM t′(1 − t_data/t) = 0），所以只有 NN 會漲落。
+- best fit 用 grid 最小值和兩旁的點做拋物線內插。
+- ensemble 是 `all`（4 點、seed 2–4），likelihood 和 scan.py 相同。
+- pseudo-data 放在 0.5%、1%、2.5% 點；被 scan 的 WC 設在該點的值，其他 WC = 0。期望 best fit 就是該點的 WC 值。
+- 這次的 yml 裡 `replicas_at_grid_edge` 對負的 WC 是錯的：grid 遞減，判斷寫反了，已經修正。不影響 best fit 和 std。
+
+| WC | 點 | 期望 best fit | NN best fit | bootstrap std | pull =（NN − 期望）/ std |
+|---|---|---|---|---|---|
+| ctGIm | 0.5% | −0.2859 | −0.2929 | 0.0084 | −0.83 |
+| ctGIm | 1% | −0.4047 | −0.4125 | 0.0087 | −0.90 |
+| ctGIm | 2.5% | −0.6405 | −0.6485 | 0.0093 | −0.87 |
+| ctGRe | 0.5% | −0.0158 | −0.0163 | 0.00003 | **−17.5** |
+| ctGRe | 1% | −0.0314 | −0.0319 | 0.00006 | **−8.7** |
+| ctGRe | 2.5% | −0.0778 | −0.0787 | 0.00015 | **−6.1** |
+| cQj11 | 0.5% | −0.4535 | −0.4827 | 0.041 | −0.71 |
+| cQj11 | 1% | −0.6543 | −0.6189 | 0.051 | +0.69 |
+| cQj11 | 2.5% | −1.0531 | −0.9809 | 0.075 | +0.96 |
+| cQd8 | 0.5% | 0.8099 | 1.0850 | 0.062 | **+4.5** |
+| cQd8 | 1% | 1.402 | 1.326 | 0.106 | −0.72 |
+| cQd8 | 2.5% | 2.7044 | 2.348 | 0.215 | −1.66 |
+
+（2.5% 的 NN best fit 和上面 scan 的值有 0.001–0.005 的差，因為這裡用拋物線內插。std 和診斷 2 的子樣本估計一致：cQj11 0.075 vs 約 0.07，cQd8 0.22 vs 約 0.2。）
+
+**結論**：
+1. **cQj11：closure 通過**，三個點都在 1σ 以內。2.5% 的「7% 偏差」就是 MC 漲落。
+2. **ctGIm：通過**，但三個點的 pull 都是 −0.8 到 −0.9，|c| 都大了約 0.008。三個點用的是同樣的 events，彼此相關，所以這不是三個獨立的 1σ。
+3. **ctGRe：有統計上顯著的偏差，但很小**。|c| 大了 0.0005–0.0009，大約是固定的偏移，而不是和 |c| 成比例。bootstrap std 很小（3e-5 到 1.5e-4），所以 pull 很大。但和 scan 本身的 ci68 半寬（2.5% 點約 0.0072）比，只有 0.1σ。目前的統計量下可以忽略；統計量變大時要再看。
+4. **cQd8：0.5% 點有顯著偏差**（pull +4.5，1.085 vs 0.81，往遠離 SM 的方向偏 34%）；1%、2.5% 在 2σ 以內，而且方向相反（往 SM）。cQd8 的 yield 幾乎是 quadratic（0.5/1/2.5% 的 root 是 0.81/1.40/2.70），所以小 c 的 best fit 對 NN 的一次項很敏感，可能是 NN 的一次項（α̂）有偏差。這是下一個要查的。
+5. **這個 MC 樣本太小，不能在 data 統計的精度下驗證四費米子**：cQd8 2.5% 的 MC 漲落（0.22）比 scan 的 ci68 半寬（約 0.05）大 4 倍。cQj11 是 0.075 vs 0.012。ctGIm、ctGRe 沒有這個問題。
+
+### 診斷的待辦（更新）
+
+- [x] cQd8 在 0.5% 點的偏差、ctGRe 的固定偏移：比較 gammas（診斷 4）。
+
+### 診斷 4：ensemble 的 gammas 和真實的 α、β（2026-10-18）
+
+Script：主目錄 `local/gamma_calibration.py`。輸出：`/eos/user/y/ykao/www/topsbi/scan_pilot_20261018/gammas/`（`<wc>_gammas.{png,yml}`）。
+
+- 沿著一個 WC（其他 = 0），每個 event 的真實 ratio 是 t(c) = 1 + α c + β c²，α、β 是該 event 的一次、二次 structure constant 除以 SM 的。
+- ensemble 給 r̂(c) = γ̂0 + γ̂1 c + γ̂2 c²，γ̂0 來自 SM_SM 的那一列。
+- 網路只看 x，所以 γ̂1 最多能學到 E[α|x]。校準好的話，E_SM[α | γ̂1 的 bin] = γ̂1，β 也一樣。events 用 w(SM) 加權。
+- 指標：
+  - 平均：E_SM[γ̂] vs E_SM[truth]，也就是 yield 的係數 b、a。
+  - slope：truth 對 γ̂ 的加權回歸斜率，校準好時是 1。分成全部 events，以及 γ̂ 中間 98% 的 events。
+  - 校準圖：50 個 γ̂ quantile bins；另外記錄最低、最高兩個 bin。
+
+| WC | 係數 | 平均 ensemble / truth | slope 全部 / 中間 98% | 最低 bin ensemble / truth | 最高 bin ensemble / truth |
+|---|---|---|---|---|---|
+| ctGIm | γ1（α） | −0.0012 / +0.0005 | 0.05 / 0.02 | −0.018 / +0.004 | +0.100 / −0.036 |
+| ctGIm | γ2（β） | 0.058 / 0.061 | 0.89 / 0.90 | 0.012 / 0.025 | 0.79 / 0.72 |
+| ctGRe | γ1 | −0.321 / −0.316 | 1.12 / 1.15 | −0.44 / −0.42 | −0.15 / −0.18 |
+| ctGRe | γ2 | **0.031 / 0.068** | **0.10 / 0.10** | −0.53 / +0.05 | 1.29 / 0.46 |
+| cQj11 | γ1 | 0.0005 / −0.0016 | **0.003 / 0.01** | −0.37 / −0.03 | **+2.58 / −0.02** |
+| cQj11 | γ2 | 0.023 / 0.022 | 0.29 / 0.86 | −0.004 / 0.001 | 17.2 / 10.6 |
+| cQd8 | γ1 | 0.0047 / 0.0049 | 0.006 / 0.85 | **−0.217 / +0.008** | 0.234 / 0.106 |
+| cQd8 | γ2 | 0.0017 / 0.0016 | 0.19 / 0.70 | −0.0008 / 0.0003 | **1.19 / 0.53** |
+
+γ̂0（SM 列，truth = 1）：四個 WC 都是 0.9997–0.9999，兩半一致，代表 SM_SM 網路有 1–3e-4 的小偏移。
+
+**結論**：
+1. **平均都對**（ctGRe 的 γ2 例外）：yield 的係數 b、a 和 truth 一致，所以 rate 沒有問題，和診斷 1 一致。
+2. **訓練點分不開的那個係數，就沒有學到，只剩雜訊**：
+   - **ctGRe 的 γ2**：平均只有 truth 的一半，中間 98% 的 slope 只有 0.10。訓練點的 |c| ≤ 0.15，c² ≤ 0.023，二次項對 r 的貢獻小於網路的雜訊。
+   - **cQj11 的 γ1**：slope ≈ 0。truth 的一次項本身就很小（平均 −0.0016）。
+   - **ctGIm 的 γ1**：slope ≈ 0。CP-odd 的一次項，highlevel features 看不到（見 feature set 比較）。
+   - 這些係數的 per-event 值主要是網路雜訊經過 lstsq morphing 放大的結果。
+3. **最極端的 bins 校準很差，而且 γ̂ 太分散**：
+   - cQd8：最低的 γ1 bin 預測 −0.217，truth 是 +0.008，連正負號都錯；最高的 γ2 bin 是 truth 的 2.2 倍。
+   - cQj11：最高的 γ1 bin 預測 +2.58，truth 是 −0.02。
+   - cQd8 的中間 98% 校準合理（slope 0.85、0.70），所以問題集中在尾端。
+4. **解釋 cQd8 在 0.5% 點的偏差**（一致，但沒有直接證明）：
+   - cQd8 在 0.5% 點（c = 0.81）時，一次項主導 yield：bc = 0.0039，ac² = 0.0011。
+   - 而 γ̂1 的尾端是錯的。到了 2.5%（c = 2.70），二次項主導（bc = 0.013，ac² = 0.012，而且 shape 主要來自 β），γ2 中間校準得比較好，所以偏差變小。
+5. **解釋 ctGRe 的固定偏移**（一致，但沒有直接證明）：γ̂2 沒學到，γ̂0、γ̂1 在訓練點上補償，使 yield 在訓練點吻合；離開訓練點就有小偏移。
+
+**改善方向**（還沒做）：
+- 訓練點要能分開一次項和二次項：
+  - 四費米子、ctGIm 加上 **c 的另一個正負號**（±c 對稱的點，(r(+c) − r(−c))/2c 直接給一次項）。
+  - ctGRe 加上 **較大的 |c|**，讓二次項大於雜訊，例如 destructive 側的點，但要注意那裡 shape 變化很大（`README_weights_ywk.md`）。
+- 更多 seeds 降低每個網路的雜訊。
+- ctGIm 用 highlevel_cos（cluster 12948860）。
+- [ ] pseudo-data 放在 SM（c = 0）。
+- [ ] 四費米子 closure 需要更多 MC，或者處理大 weight 的 events。
 - [ ] 如果要降低漲落：用更多 MC（train.p 也拿來當 pseudo-data，網路沒有看過的部分只有 validation.p，要小心），或者看大 weight events 的處理。

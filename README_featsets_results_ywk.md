@@ -68,7 +68,7 @@ calibration（pull / rms_bias）：
 - configs：`local/condor/configs/pilot_highlevel_cos/`（4 WC × seed 2、3 = 8 個）。和 top30 的 configs 只差 `data`、`features`、`holdout`、`name`。
 - condor list：`~/topsbi-condor/list_featsets_highlevel_cos.txt`
 - 輸出：`results/port/0c49da2_pilot_highlevel_cos/<wc>_5p/seed_<n>`
-- 送出：`cd ~/topsbi-condor && condor_submit code=../topsbi-wt/port-0c49da2 configlist=list_featsets_highlevel_cos.txt submit_list.sub`
+- 送出（2026-10-18 這次用了相對路徑 `../topsbi-wt/...`，8 個 jobs 全部失敗，要用絕對路徑重送）：`cd ~/topsbi-condor && condor_submit code=/eos/home-y/ykao/SWAN_projects/analysis/topsbi-wt/port-0c49da2 configlist=list_featsets_highlevel_cos.txt submit_list.sub`
 - 跑完後：`local/compare_featsets.py` 的 `SETS` 已經加了 `highlevel_cos`，直接重跑即可。
 - 判斷標準：
   - ctGIm 的 delta 接近 all（+4.2 到 +4.4）。
