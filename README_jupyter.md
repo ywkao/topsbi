@@ -10,23 +10,43 @@
 ## Notebook
 
 **程式碼和 configs 分開放**：
-- 程式碼用固定版本的 worktree **`topsbi-wt/port-0c49da2`**（port/rebased，已 rebase 到 eddie/main c810b07，2026-10-17）。`weights_only` 和 `stitched` 都用它。
+- 程式碼用固定版本的 worktree **`topsbi-wt/port-0c49da2`**（port/rebased，已 rebase 到 eddie/main c810b07，2026-10-17）。
 - 主目錄 `topsbi/` checkout 的是 eddie/main：沒有 `group_cols`、`year_loc: null`，不要拿來跑我們的資料。
 - 舊的 worktree 只用來重現已經訓練好的網路：`port-d11cea0`（rebase 前的 weights_only）、`port-209ba10`（port/dev，stitched）。
-- configs 在主目錄的 `local/`（untracked，只有主目錄有）。notebook 預設讀 condor 版本 `local/condor/configs/<組>/`（`device: cuda`）；CPU 版本（`device: cpu`，只有 seed 2）在 `local/cpu_configs/<組>/`，cell 2 反正會用 `DEVICE` 覆蓋 `device`。`wo/` 是 weights_only，`log/` 是 stitched。
+- configs 在主目錄的 `local/`（untracked，只有主目錄有）。
 
-**用哪個 method**：預設用 **`weights_only`**。
-- upstream 推薦它：weights 保留每個樣本的 xsec × lumi normalization，學到的 ratio 包含 yield 的比例，可以直接拿來做 likelihood scan。
-- `stitched` 把 p0、p1 各自除以平均值，只學到形狀的比例；scan 時要另外乘 yield ratio。
-- 我們的結果（`README_summary_ywk.md` 嘗試 17–23）：cQj11、cQd8 上兩者差不多；ctGRe_ctGRe 上 weights_only 明顯比較好，但只有一個 seed。
-- `stitched` 留著當 cross-check。注意 upstream 改過 stitched 的語意，新程式碼的 stitched 結果不能直接和 `port-209ba10` 的舊結果比。
+**現在的 configs：`local/condor/configs/hlcos/`**（2026-10-20）
+- 由 `python3 local/make_training_configs.py local/plans/hlcos.yml` 產生（plan 檔記錄所有設定）。同時產生 CPU 版 `local/cpu_configs/hlcos/`、scan 的 ensemble `local/scan/hlcos_<wc>.yml`、condor list `~/topsbi-condor/list_hlcos.txt`。
+- feature set：highlevel_cos（highlevel 13 個 + `cos_{lep,had}_{n,r,k}`，見 `README_batch_featsets_ywk.md`）。method：`weights_only`。訓練設定和 pilot 相同（`README_batch_pilot_ywk.md`）。
+- 檔名 `hlcos_<label>_seed<n>.yml`，seeds 2、3、4。結果寫到 `config['name']` = `/eos/cms/store/user/ykao/topsbi/results/port/0c49da2_hlcos/<label>/seed_<n>`。
+- labels（c0 = SM，只動一個 WC）：
+
+| label | c1 | 舊的名字 |
+|---|---|---|
+| `SM_SM` | SM（`sm` 網路，morphing 和 scan 需要，每個 seed 一次） | |
+| `<wc>_<pct>p` | constructive root c_p：yield Y/Y_SM = 1 + pct | `SM_<wc>` |
+| `<wc>_<pct>p_neg` | **−c_p**（和 `<wc>_<pct>p` 成 ±c 對，分開一次項和二次項） | 沒有。**不是**舊的 `<wc>_<wc>`（destructive root） |
+
+pct ∈ {0.5, 1, 2.5, 5}，WC ∈ {ctGRe, ctGIm, cQj11, cQd8}。WC 值：
+
+| WC | 0.5p | 1p | 2.5p | 5p | `_neg` 的 yield 變化（0.5 / 1 / 2.5 / 5） |
+|---|---|---|---|---|---|
+| ctGRe | −0.0158 | −0.0314 | −0.0778 | −0.1532 | −0.50 / −0.99 / −2.42 / −4.68% |
+| ctGIm | −0.2859 | −0.4047 | −0.6405 | −0.9062 | +0.49 / +0.99 / +2.48 / +4.98% |
+| cQj11 | −0.4535 | −0.6543 | −1.0531 | −1.5027 | +0.37 / +0.82 / +2.20 / +4.58% |
+| cQd8 | 0.8099 | 1.402 | 2.7044 | 4.2535 | −0.29 / −0.36 / −0.13 / +0.87% |
+
+`_neg` 的 WC 值就是上表變號；yield 是 Y/Y_SM − 1 = b c + a c²（a、b 在 `local/wc_targets_pilot_train.yml`）。為什麼不用 destructive root：ctGRe 的在 c ≈ 4.7–4.8（n_eff/N 只有 0.05），octet 四費米子在 |c| = 4.9–7.5（`/eos/user/y/ykao/www/topsbi/weights_20261017_pilot_sanitize/`）。
+
+**先單獨跑幾個（cell 1–4），有感覺之後再用 for loop（cell 5–6）。**
 
 ```python
 # --- cell 1: path，只加程式碼的 src/ ---
-import sys
+import os, sys
 TOP = '/eos/user/y/ykao/SWAN_projects/analysis'
-CODE = f'{TOP}/topsbi-wt/port-0c49da2'   # weights_only 和 stitched 都用這個
+CODE = f'{TOP}/topsbi-wt/port-0c49da2'
 REPO = f'{TOP}/topsbi'                     # configs 從這裡讀
+CONFIGS = f'{REPO}/local/condor/configs/hlcos'
 sys.path.insert(0, f'{CODE}/src')   # 不要加 REPO 或 CODE 本身：根目錄的 metrics.py / schema.py 等會蓋掉同名的 package
 %load_ext autoreload
 # 改了 src/ 的程式不用重開 kernel（% magic 那一行後面不能加註解，會被當成參數）
@@ -37,32 +57,39 @@ from topsbi import train
 print(train.__file__, torch.__version__)   # 確認 __file__ 在 CODE 底下
 assert torch.cuda.is_available(), '沒有 GPU：SWAN 設定裡選 GPU，或在 cell 2 設 DEVICE = "cpu"'
 print(torch.cuda.get_device_name(0))
+
+
+def describe(config):
+    """c1 裡不為 0 的 WC。"""
+    moved = {wc: v for wc, v in zip(config['wcs'], config['c1'][1:]) if v}
+    return moved or 'SM'
+
+
+def is_done(config):
+    return all(os.path.exists(f"{config['name']}/{f}") for f in ('model.pt', 'complete/performance.yml'))
 ```
 
 ```python
-# --- cell 2: 載入 config，覆蓋要改的參數 ---
+# --- cell 2: 單獨一個網路：載入 config，覆蓋要改的參數 ---
 DEVICE = 'cuda'
-METHOD = 'weights_only'   # 或 'stitched'
-POINT = 'SM_cQj11'        # weights_only 也可以用 'SM_SM'（`sm` 網路，c0 = c1 = SM）
-CFG = {
-    'weights_only': f'{REPO}/local/condor/configs/wo/wo_log_bs10k_{POINT}_seed2.yml',
-    'stitched':     f'{REPO}/local/condor/configs/log/log_bs10k_{POINT}_seed2.yml',
-}[METHOD]
-config = yaml.safe_load(open(CFG))
-assert config['method'] == METHOD
-config['device'] = DEVICE
-config['name'] = f'/eos/user/y/ykao/topsbi_notebook/{METHOD}_log_bs10k_{POINT}'   # 改到自己的目錄，避免蓋掉 condor 的結果
-config['group_cols'] = []             # highlevel 資料沒有 era/njets 欄位；stitched 的舊 configs 沒設，不加會在畫圖時 IndexError
-config.setdefault('holdout', '/eos/cms/store/user/ykao/topsbi/pretraining_main_highlevel_log/validation.p')   # 兩個 method 用同一份 validation 比較
-config['epochs'] = 5                  # 快速測試用
-config['features_to_animate'] = []    # 不產生 animation，比較快（animate_per_epoch 不能設 0：train.py 用它取 %，會除以零）
-```
+POINT = 'ctGRe_5p_neg'    # 例：'SM_SM'、'ctGRe_5p'、'ctGRe_5p_neg'、'cQd8_0.5p'、'cQd8_0.5p_neg'
+SEED = 2                  # 2、3、4
+TEST = False              # True：5 epochs、不畫 animation、寫到自己的目錄（不碰正式結果）
 
-`weights_only` 的 config 還需要 `year_loc: null`、`lumi: [1.0]`（`wo/` 的 configs 都有）；`stitched` 用不到這兩個。
+config = yaml.safe_load(open(f'{CONFIGS}/hlcos_{POINT}_seed{SEED}.yml'))
+config['device'] = DEVICE
+if TEST:
+    config['epochs'] = 5
+    config['features_to_animate'] = []   # animate_per_epoch 不能設 0：train.py 用它取 %，會除以零
+    config['name'] = f'/eos/user/y/ykao/topsbi_notebook/hlcos_{POINT}_seed{SEED}'
+print(POINT, 'seed', SEED, describe(config), '->', config['name'])
+if is_done(config):
+    print('注意：這個網路已經訓練過，cell 3 會覆蓋它')
+```
 
 ```python
 # --- cell 3: train ---
-config = train.main(config)           # model.pt 和圖會寫到 config['name']
+config = train.main(config)           # model.pt 和圖會寫到 config['name']；會先刪掉那裡的 complete/、incomplete/
 ```
 
 ```python
@@ -72,11 +99,56 @@ print(open(f"{config['name']}/complete/performance.yml").read())
 Image(f"{config['name']}/complete/loss.png")
 ```
 
+### 一次一個 WC 的 for loop（cell 5–6）
+
+先跑 cell 1。cell 5 對一個 WC 跑過 0.5%、1%、2.5%、5% 的 `<wc>_<pct>p`（constructive）和 `<wc>_<pct>p_neg`（−c）。
+
+```python
+# --- cell 5: 一個 WC 的 c_p 和 -c_p，4 個 yield 點 × seeds ---
+WC = 'ctGRe'                        # 一次一個：ctGRe、ctGIm、cQj11、cQd8
+SEEDS = [2]                         # [2, 3, 4]
+PCTS = ['0.5p', '1p', '2.5p', '5p']
+KINDS = {'constructive': '', 'neg': '_neg'}   # 只跑一種就刪掉另一個
+RUN_SM_SM = False                   # 每個 seed 跑一次就好
+SKIP_DONE = True                    # 已經有 model.pt 和 performance.yml 的跳過（kernel 斷掉後可以接著跑）
+DEVICE = 'cuda'
+
+labels = (['SM_SM'] if RUN_SM_SM else []) + [f'{WC}_{p}{k}' for k in KINDS.values() for p in PCTS]
+done = []
+for seed in SEEDS:
+    for label in labels:
+        config = yaml.safe_load(open(f'{CONFIGS}/hlcos_{label}_seed{seed}.yml'))
+        config['device'] = DEVICE
+        if SKIP_DONE and is_done(config):
+            print(f'skip {label} seed {seed}: already trained')
+            continue
+        print(f'=== {label} seed {seed}: {describe(config)} -> {config["name"]}')
+        train.main(config)
+        done.append(config['name'])
+print('trained:', *done, sep='\n')
+```
+
+```python
+# --- cell 6: 這個 WC 的結果一覽 ---
+for seed in SEEDS:
+    for label in labels:
+        config = yaml.safe_load(open(f'{CONFIGS}/hlcos_{label}_seed{seed}.yml'))
+        if is_done(config):
+            perf = yaml.safe_load(open(f"{config['name']}/complete/performance.yml"))
+            print(f"{label:16s} seed {seed}  auc {perf['auc']:.4f}  rms_bias {perf['rms_bias']:.4f}  pull {perf['pull']:.2f}")
+        else:
+            print(f'{label:16s} seed {seed}  (not trained)')
+```
+
+- 結果直接寫進正式的 `results/port/0c49da2_hlcos/`（和 condor 一樣），之後 `local/scan/hlcos_<wc>.yml` 的 scan、closure 可以直接用。`SKIP_DONE = False` 會重訓、覆蓋已經有的結果。
+- 一個點（100 epochs，GPU）和 condor 的一個 job 一樣久；一個 WC 一個 seed 是 8 個點。SWAN session 有時間限制，跑不完時 `SKIP_DONE = True` 再執行一次就會接著跑。
+- 舊的 configs（`wo/`、`log/`，highlevel_log，只有 5% 點，`SM_<wc>`、`<wc>_<wc>` 的命名）還在，要重現舊的結果時把 cell 2 的 path 改成 `{REPO}/local/condor/configs/wo/wo_log_bs10k_{POINT}_seed{SEED}.yml`，並加上 `config['group_cols'] = []`（stitched 的 `log/` configs 沒設）。
+
 ## performance.yml 的意義
 
 ### port/rebased（`port-0c49da2`、`port-d11cea0`，upstream 的 metrics）
 
-完整說明在 worktree 的 `examples/training/README.md`「Performance metrics」。有設 `holdout` 時（`wo_*` configs 都有，cell 2 也幫 stitched 補上），用的是沒參與訓練的 `validation.p`。除了 `auc`，校準完美時都是 0；`_err` 是完美網路在同樣大小的資料上會有的漲落，數值在約 2 倍 `_err` 內就和 0 一致。
+完整說明在 worktree 的 `examples/training/README.md`「Performance metrics」。有設 `holdout` 時（`hlcos`、`wo_*` configs 都有），用的是沒參與訓練的 `validation.p`。除了 `auc`，校準完美時都是 0；`_err` 是完美網路在同樣大小的資料上會有的漲落，數值在約 2 倍 `_err` 內就和 0 一致。
 
 | key | 意義 |
 |---|---|
