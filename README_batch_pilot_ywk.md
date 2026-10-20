@@ -60,7 +60,7 @@ jobs：(4 WC × 4 點 + SM_SM) × 3 seeds = 51。
 
 ### 設計的取捨
 
-- **四個 WC 的代表性**：ctGIm（CP-odd）、ctGRe（CP-even、二體算符）、cQj11、cQd8（四費米子，yield 分別以一次、二次項為主）。
+- **四個 WC 的代表性**：ctGIm（CP-odd）、ctGRe（CP-even、二體算符）、cQj11（四費米子 color singlet，yield 幾乎只有二次項，5% 時 b·c 佔 4%）、cQd8（color octet，和 SM 的 qq̄ → g → tt̄ 有干涉，5% 時 b·c 佔 41%）。
 - **以 yield 定點**：不同 WC 的點在「訊號大小」上可比較。
 - **只取一個正負號（constructive）**：destructive 側的 root 有些很遠（ctGRe 約 4.7），shape 變化很大。代價見下面「限制」。
 - **四個點**：可以用其中三個 morph（{SM_SM, 1%, 5%}），另外兩個（0.5%、2.5%）當 hold-out closure 的 dedicated 網路。
@@ -98,3 +98,38 @@ jobs：(4 WC × 4 點 + SM_SM) × 3 seeds = 51。
 2. γ̂ 的尾端太分散（cQd8 最低的 γ1 bin 正負號都錯）→ 更多 seeds。
 3. highlevel 看不到 ctGIm 的 CP-odd 資訊 → highlevel_cos（見 `README_batch_featsets_ywk.md`）。
 4. 每個 WC 單獨訓練，沒有交叉項，不能做 2D scan。
+
+## 後續：±c 點的 weights 和 LR 分布（2026-10-20）
+
+為了決定下一批的第二個點用 −c（`_neg`）還是 destructive root，直接看 truth weights（不用網路）。
+
+- 圖：`www/topsbi/weights_20261020_pm_points/`，每個 WC 一張 png，列 = 0.5/1/2.5/5%；藍 = +c（constructive），綠 = −c，紅虛線 = destructive。
+  - 第 1 欄：|w1| / mean(w0_SM) 的分布。
+  - 第 2 欄：每個 event 的真實 log10 LR = log10(w1/w0)（只畫 w1 > 0）。
+  - 第 3 欄：**逐 bin** 的 Σw1/Σw0（每個 m_ttbar bin 內的 events 加總後相除 = 該 bin 的 yield ratio；超出邊界的 events 放進最邊的 bin）。
+  - `summary.txt`：每個點的 c、1 + b·c + a·c² 的各項、n_eff/N、w1 ≤ 0 的比例。
+- 資料：`pretraining_main_highlevel_cos_log_pilot/train.p`（只去掉 w ≤ 0，沒有其他 sanitize）。
+- 重現：
+  ```
+  source /cvmfs/sft.cern.ch/lcg/views/LCG_109_cuda/x86_64-el9-gcc13-opt/setup.sh
+  export PYTHONPATH=/eos/home-y/ykao/SWAN_projects/analysis/topsbi-wt/port-0c49da2/src:$PYTHONPATH
+  cd /eos/home-y/ykao/SWAN_projects/analysis/topsbi
+  python3 local/plot_pm_points.py /eos/cms/store/user/ykao/topsbi/pretraining_main_highlevel_cos_log_pilot \
+      local/wc_targets_pilot_train.yml /eos/user/y/ykao/www/topsbi/weights_20261020_pm_points [wc ...]
+  ```
+  不給 wc 時畫 ctGIm、ctGRe、cQj11、cQd8。
+
+ctGRe 5% 的分解（a = 0.0676，b = −0.3159）：
+
+| 點 | c | 1 + b·c + a·c² | Y/Y_SM | n_eff/N |
+|---|---|---|---|---|
+| +c（constructive） | −0.1532 | 1 + 0.0484 + 0.0016 | 1.050 | 0.77 |
+| −c（`_neg`） | +0.1532 | 1 − 0.0484 + 0.0016 | 0.953 | 0.75 |
+| destructive（舊 `<wc>_<wc>`） | +4.8252 | 1 − 1.5243 + 1.5743 | 1.050 | **0.05** |
+
+觀察：
+- **ctGRe**：±c 幾乎互為鏡像，LR 只跨 1–2 個數量級，m_ttbar 上是平的 1.05 / 0.95；destructive 的 LR 跨 8 個數量級，高 m_ttbar 到 7 倍 → 不適合當訓練點。
+- **cQd8**：±c 的差異就是一次項的資訊。−c 多了低側的尾巴（LR 到 10⁻³，干涉相消），+c 只有往上的尾巴；−c 的總 yield 幾乎不變（5% 時 +0.9%），但 shape 有變。高 m_ttbar 的上升 ±c 差不多（二次項），destructive 陡約 3 倍（5% 時 65 vs 23 倍）。n_eff/N 三者都 0.68–0.78。
+- **cQj11**：−c ≈ destructive（b 很小）。三者的 LR 分布幾乎一樣，最高到 log10 LR ≈ 5.3（5%），n_eff/N 在 5% 時 0.54–0.62。
+- **ctGIm**：−c 和 destructive 完全重合（b ≈ 0）。±c 的 LR 分布相同，但 m_ttbar > 1.3 TeV 時分開（5% 時 +c 1.27、−c 1.20）：per-event 的一次項在 m_ttbar 上不是 0（積分約 0）。CP-odd 算符在 CP-even 變數上不應該有一次項，可能來自 per-event 二次 fit 的 coefs，還沒查。
+- 結論：第二個點用 **−c（`_neg`）**，見 `local/plans/hlcos.yml`、`README_jupyter.md`。

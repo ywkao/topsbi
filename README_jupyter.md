@@ -16,7 +16,16 @@
 - configs 在主目錄的 `local/`（untracked，只有主目錄有）。
 
 **現在的 configs：`local/condor/configs/hlcos/`**（2026-10-20）
-- 由 `python3 local/make_training_configs.py local/plans/hlcos.yml` 產生（plan 檔記錄所有設定）。同時產生 CPU 版 `local/cpu_configs/hlcos/`、scan 的 ensemble `local/scan/hlcos_<wc>.yml`、condor list `~/topsbi-condor/list_hlcos.txt`。
+- 由 `python3 local/make_training_configs.py local/plans/hlcos.yml` 產生（plan 檔記錄所有設定），同時產生 scan 的 ensemble `local/scan/hlcos_<wc>.yml`、condor list `~/topsbi-condor/list_hlcos.txt`。再跑一次只會補上 plan 裡新加、還沒有的 configs，已經有的不動（`--force` 才會重寫）。不再產生 CPU 版，需要時複製一份改 `device: cpu`。
+- **2026-10-20 加了 10p、20p（和 `_neg`）**：WC 值在 `local/wc_targets_hlcos.yml`（0.5–5% 和 pilot 相同）。原因：網路雜訊是絕對量（SM_SM rms_bias ≈ 0.0006），0.5%、1% 的點被雜訊主導（ctGRe 0.5p 的 pull 到 12）；morph 用大的點，小的點留作 closure。n_eff/N 在 20% 時：ctGRe 0.72–0.77、ctGIm 0.51–0.66、cQd8 0.49–0.53，**cQj11 只有 0.13–0.15**（10% 是 0.30–0.37）。
+
+| WC | 10% | 20% |
+|---|---|---|
+| ctGIm | −1.282 | −1.8135 |
+| ctGRe | −0.2976 | −0.5648 |
+| cQj11 | −2.1387 | −3.0382 |
+| cQd8 | 6.497 | 9.7092 |
+
 - feature set：highlevel_cos（highlevel 13 個 + `cos_{lep,had}_{n,r,k}`，見 `README_batch_featsets_ywk.md`）。method：`weights_only`。訓練設定和 pilot 相同（`README_batch_pilot_ywk.md`）。
 - 檔名 `hlcos_<label>_seed<n>.yml`，seeds 2、3、4。結果寫到 `config['name']` = `/eos/cms/store/user/ykao/topsbi/results/port/0c49da2_hlcos/<label>/seed_<n>`。
 - labels（c0 = SM，只動一個 WC）：
@@ -101,13 +110,13 @@ Image(f"{config['name']}/complete/loss.png")
 
 ### 一次一個 WC 的 for loop（cell 5–6）
 
-先跑 cell 1。cell 5 對一個 WC 跑過 0.5%、1%、2.5%、5% 的 `<wc>_<pct>p`（constructive）和 `<wc>_<pct>p_neg`（−c）。
+先跑 cell 1。cell 5 對一個 WC 跑過 `PCTS` 裡的百分比（可用 0.5p、1p、2.5p、5p、10p、20p）的 `<wc>_<pct>p`（constructive）和 `<wc>_<pct>p_neg`（−c）。
 
 ```python
 # --- cell 5: 一個 WC 的 c_p 和 -c_p，4 個 yield 點 × seeds ---
 WC = 'ctGRe'                        # 一次一個：ctGRe、ctGIm、cQj11、cQd8
 SEEDS = [2]                         # [2, 3, 4]
-PCTS = ['0.5p', '1p', '2.5p', '5p']
+PCTS = ['5p', '10p', '20p']   # 可用 '0.5p', '1p', '2.5p', '5p', '10p', '20p'
 KINDS = {'constructive': '', 'neg': '_neg'}   # 只跑一種就刪掉另一個
 RUN_SM_SM = False                   # 每個 seed 跑一次就好
 SKIP_DONE = True                    # 已經有 model.pt 和 performance.yml 的跳過（kernel 斷掉後可以接著跑）

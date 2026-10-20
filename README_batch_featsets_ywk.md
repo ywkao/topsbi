@@ -18,6 +18,14 @@
 - condor list：`~/topsbi-condor/list_featsets_5p.txt`
 - 輸出：`/eos/cms/store/user/ykao/topsbi/results/port/0c49da2_pilot_<set>/<wc>_5p/seed_<n>`
 
+### 程式碼版本和方法（2026-10-20 確認）
+
+- **程式碼**：commit `0c49da2`（worktree `topsbi-wt/port-0c49da2`；port/rebased 在 2026-10-17 rebase 到 eddie/main c810b07 之後的版本，0c49da2 本身只改 READMEs）。
+  - 確認方式：condor 的 `run.sh` 會印出 `git log --oneline -1`，三個 clusters 的 `~/topsbi-condor/logs/<cluster>.0.out` 都是 `0c49da2 update READMEs`：12702676（pilot，含 highlevel 基準）、12707721（top30、compact、lowlevel、all）、13369189（highlevel_cos）。
+- **方法：`weights_only`**（`pilot/`、`pilot_*/` 的 95 個 configs 都是），`lumi: [1.0]`、`year_loc: null`、`group_cols: []`，holdout `validation.p`。網路學 r = w(c1)/w(SM)，包含 rate。
+- 訓練設定：`wo_log_bs10k` 模板（batch 10000、cosine、lr 1e-3、256×3、dropout 0.2、100 epochs、patience 20）。
+- 六組的程式碼、方法、訓練設定完全相同，只差 `data`、`features`、`holdout`、`name`。
+
 ### Feature sets
 
 | 名稱 | 數量 | 資料（`/eos/cms/store/user/ykao/topsbi/`） | 來源 |
@@ -49,7 +57,7 @@
 | holdout BCE gain、frac（相對 truth）、配對 delta | ✅ | `local/compare_featsets.py`；`www/topsbi/featsets_trained_20261018/` |
 | auc、pull、rms_bias 比較 | ✅ | 除了 all 在 ctGIm，各組差不多 |
 | 找出 ctGIm 的資訊來自哪些 features | ✅ | `cos_{lep,had}_{n,r,k}` → highlevel_cos |
-| 確認 highlevel_cos | ⚠️ 要重送 | 見下 |
+| 確認 highlevel_cos | ✅ | ctGIm gain 是 highlevel 的 4.2 倍（all 的 1.8 倍），其他 WC 沒有損失 → default feature set |
 | 用其他 feature set 做 morphing / scan | ❌ 不行 | 只有 5% 點 |
 
 ### 主要結論
@@ -67,5 +75,5 @@
 - 重送（用絕對路徑，和前兩批一樣）：
   `cd ~/topsbi-condor && condor_submit code=/eos/home-y/ykao/SWAN_projects/analysis/topsbi-wt/port-0c49da2 configlist=list_featsets_highlevel_cos.txt submit_list.sub`
 - **已重送：cluster 13369189**（2026-10-19，8 jobs，絕對路徑）。
-- 跑完後：重跑 `local/compare_featsets.py`（`SETS` 已有 highlevel_cos）。判斷標準：ctGIm 的 delta 接近 all（+4.2 到 +4.4），其他 WC 和 0 一致。
-- 如果確認了：下一批 morphing 訓練（±c 點、更多 seeds）用 highlevel_cos。
+- **結果（2026-10-20，`www/topsbi/featsets_trained_20261020/`）**：ctGIm 的 delta +7.7 / +7.9（all 是 +4.2 / +4.4），cQj11、cQd8 和 0 一致，ctGRe −0.006 / −0.008（gain 的 2–3%）。細節見 `README_featsets_results_ywk.md`。
+- **highlevel_cos 是接下來訓練的 default**：`local/plans/hlcos.yml`（±c 點，見 `README_jupyter.md`）。
