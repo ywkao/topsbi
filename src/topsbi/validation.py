@@ -167,6 +167,7 @@ def network_sums(cache, binning, w0, weights, chunk=32):
         {seed: dict with
             networks: network names (rows of Theta)
             Theta: [n_networks, K] expanded training points
+            row_weights: [n_networks] weights of the rows in the fit (EnsembleCache.row_weights)
             bias: [n_networks, B] sum w0 * r_hat_n - sum w0 * r_n over the events the seed kept
             mc_var: [n_networks, B] sum (w0 * r_hat_n - w0 * r_n)^2, the MC-statistics variance of bias
         }
@@ -190,6 +191,7 @@ def network_sums(cache, binning, w0, weights, chunk=32):
         out[seed] = {
             'networks': list(network['networks']),
             'Theta': network['Theta'],
+            'row_weights': cache.row_weights(seed),
             'bias': np.concatenate(bias),
             'mc_var': np.concatenate(mc_var),
         }
@@ -200,8 +202,8 @@ def attribute(networks, components, sm_yield):
     """
     Split the bias of the given gamma components into the contributions of the training networks.
 
-    gamma = Theta^+ r_hat per event, so the binned bias of component k is exactly
-    sum_n Theta^+_kn * bias_n. Each network's share is the projection of its contribution on the total,
+    gamma = (W Theta)^+ W r_hat per event (W the row weights), so the binned bias of component k is exactly
+    sum_n [(W Theta)^+ W]_kn * bias_n. Each network's share is the projection of its contribution on the total,
     weighted by 1 / sm_yield^2 (bias relative to the SM yield); the shares of a component sum to 1.
 
     Args:
@@ -216,7 +218,8 @@ def attribute(networks, components, sm_yield):
     weight = np.where(occupied, 1 / np.where(occupied, sm_yield, 1) ** 2, 0)
     contributions = {}
     for s in networks.values():
-        pinv = np.linalg.pinv(s['Theta'].astype(np.float64))[components]
+        w = s['row_weights']
+        pinv = np.linalg.pinv(w[:, None] * s['Theta'].astype(np.float64))[components] * w
         for j, name in enumerate(s['networks']):
             contributions[name] = contributions.get(name, 0) + pinv[:, j, None] * s['bias'][j] / len(networks)
     total = sum(contributions.values())
@@ -284,10 +287,13 @@ def refit_without(cache, drop):
     for seed in cache.seeds:
         network = cache.network(seed)
         rows = np.array([name not in drop for name in network['networks']])
+        w = torch.from_numpy(cache.row_weights(seed)[rows, None])
         Theta = torch.from_numpy(network['Theta'][rows])
         ratios = torch.from_numpy(np.asarray(cache.seed_ratios(seed))[rows])
         keep = ~torch.isinf(ratios).any(0)
-        gammas, _, rank[seed], _ = torch.linalg.lstsq(Theta, ratios[:, keep], driver='gelsd')
+        gammas, _, rank[seed], _ = torch.linalg.lstsq(
+            w.to(Theta.dtype) * Theta, w.to(ratios.dtype) * ratios[:, keep], driver='gelsd'
+        )
         seed_gammas[seed], seed_filter[seed] = gammas.numpy(), keep.numpy()
     common = np.logical_and.reduce(list(seed_filter.values()))
     mean = sum(g[:, common[f]] for g, f in zip(seed_gammas.values(), seed_filter.values())) / len(seed_gammas)
@@ -324,9 +330,11 @@ def drop_bias_sums(cache, groups, binning, w0, weights, sums):
     bias = {g: [] for g in groups}
     for seed in cache.seeds:
         network = cache.network(seed)
-        names, Theta = network['networks'], network['Theta'].astype(np.float64)
+        # rows scaled by their fit weights, so the normal equations below are those of the weighted fit
+        w = cache.row_weights(seed)[:, None]
+        names, Theta = network['networks'], w * network['Theta'].astype(np.float64)
         keep = torch.from_numpy(cache.seed_filter[seed])
-        R = np.asarray(cache.seed_ratios(seed))[:, keep.numpy()].astype(np.float64)
+        R = w * np.asarray(cache.seed_ratios(seed))[:, keep.numpy()].astype(np.float64)
         H, b = Theta.T @ Theta, Theta.T @ R
         truth = binned_sums(weights[keep].T, index[:, keep], n_bins)
         for g, members in groups.items():
@@ -531,7 +539,9 @@ def objective_weights(cfg, wcs, mask, flagged, Theta, m):
     sigma0_2 = np.diag(Hi @ (Theta.T @ (m[:, None] ** 2 * Theta)) @ Hi)
     w = np.full(Theta.shape[1], cfg.get('unflagged_weight', 0.1) if flagged else 1.0)
     w[flagged] = 1.0
-    return np.diag(np.where(sigma0_2 > 0, w / np.where(sigma0_2 > 0, sigma0_2, 1), 0))
+    # an unconstrained component has sigma0^2 at roundoff level, and 1 / sigma0^2 would blow that roundoff up
+    usable = (sigma0_2 > 0) & ~unconstrained_components(Theta)
+    return np.diag(np.where(usable, w / np.where(usable, sigma0_2, 1), 0))
 
 
 def unconstrained_components(Theta, rtol=1e-10):
@@ -722,7 +732,9 @@ def main(config_path, refit=False):
     features, coefficients, _ = torch.load(config['data'], weights_only=False)[:]
     if 'lumi' not in config:
         sys.exit('[error]: config needs lumi, the luminosity of each era')
-    eras = features[:, config.get('year_loc', 21)].long()
+    # year_loc: null for single-era samples without a year_int feature: every event uses lumi[0]
+    year_loc = config.get('year_loc', 21)
+    eras = torch.zeros(len(features), dtype=torch.long) if year_loc is None else features[:, year_loc].long()
     if eras.max() >= len(config['lumi']):
         sys.exit(f'[error]: lumi has {len(config["lumi"])} eras but the data use era index {int(eras.max())}')
     lumi = torch.tensor(config['lumi'], dtype=torch.float64)[eras]
@@ -889,6 +901,8 @@ def main(config_path, refit=False):
     keep = np.array([n not in drop for n in names])
     Theta, names = Theta[keep], [n for n, k in zip(names, keep) if k]
     m = np.array([misclosure[n] for n in names])
+    # the weighted fit is the unweighted one of the scaled rows W Theta, with errors W m
+    row_w = cache.row_weights(cache.seeds[0])[keep]
     totals = all_weights.sum(0)
 
     def yield_ratio(theta):
@@ -896,9 +910,9 @@ def main(config_path, refit=False):
 
     max_yield = cfg.get('max_yield_ratio') or float((Theta @ weights.sum(0).numpy()).max() / totals[0])
     units = candidate_units(wcs, Theta, names, misclosure, cache.mask, yield_ratio, max_yield, extra)
-    G = objective_weights(cfg, wcs, cache.mask, flagged, Theta, m)
+    G = objective_weights(cfg, wcs, cache.mask, flagged, row_w[:, None] * Theta, row_w * m)
     chosen, sigma0, sigma1, history = search_points(
-        Theta, m, units, G, cfg.get('n_units', 10), cfg.get('min_gain', 0.01)
+        row_w[:, None] * Theta, row_w * m, units, G, cfg.get('n_units', 10), cfg.get('min_gain', 0.01)
     )
     # components the design cannot determine have no propagated error (the pseudo-inverse would report 0)
     sigma0 = np.where(unconstrained_components(Theta), np.nan, sigma0)

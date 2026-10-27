@@ -213,6 +213,7 @@ def write_cache(path, config, dre, layer):
         'wcs': config['wcs'],
         'lumi': config['lumi'],
         'seeds': config['seeds'],
+        'sm_weight': config.get('sm_weight', 1),
         'model_hash': model_hashes(config['seeds']),
         'rank': {seed: s['rank'] for seed, s in layer.items()},
         'created': datetime.datetime.now().isoformat(timespec='seconds'),
@@ -254,13 +255,21 @@ class EnsembleCache:
         out['networks'] = [str(n) for n in out['networks']]
         return out
 
+    def row_weights(self, seed):
+        """Weights of the rows of network(seed) in the least-squares fit: 1, and sm_weight for the SM row (last)."""
+        w = np.ones(len(self.manifest['seeds'][seed]['networks']) + 1)
+        w[-1] = self.manifest.get('sm_weight', 1)
+        return w
+
     def seed_ratios(self, seed):
         """Every network's per-event ratio for one seed (layer 2): [n_networks, N], rows ordered as in network(seed)."""
         return np.load(f'{self.path}/seed_{seed}/ratios.npy', mmap_mode=self.mode)
 
     def matches(self, config):
-        """Whether the cache was built from the same data, c0, networks and network weights (model.pt) as config."""
+        """Whether the cache was built from the same data, c0, networks, sm_weight and model.pt files as config."""
         if any(self.manifest[k] != config[k] for k in ('data', 'c0', 'seeds')):
+            return False
+        if self.manifest.get('sm_weight', 1) != config.get('sm_weight', 1):
             return False
         return self.manifest['model_hash'] == model_hashes(config['seeds'])
 

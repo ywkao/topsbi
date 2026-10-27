@@ -55,7 +55,9 @@ class full_likelihood:
         at an arbitrary point in WC space.
 
         Args:
-            config: dictionary containing the networks and parameters for network ensemble
+            config: dictionary containing the networks and parameters for network ensemble; optional sm_weight
+                (default 1) weights the SM row of the least-squares fit, so the shared gamma_sm follows the
+                well-closing SM network instead of being pulled by noisier networks
             features: non-normalized feateures to be evaluated by the networks
         """
         self.config = config
@@ -84,8 +86,13 @@ class full_likelihood:
         self.trainingMatrix = self.trainingMatrix[:, self.zerosMask]
         self.ratios = torch.vstack(self.ratios)
         self.infFilter = ~torch.isinf(self.ratios).any(0)
+        # row weights of the fit (SM last); trainingMatrix and ratios stay unweighted
+        self.rowWeights = torch.ones(len(self.ratios), dtype=self.ratios.dtype)
+        self.rowWeights[-1] = config.get('sm_weight', 1)
         self.gammas, self.residuals, self.rank, self.singular_values = torch.linalg.lstsq(
-            self.trainingMatrix, self.ratios[:, self.infFilter], driver='gelsd'
+            self.rowWeights[:, None].to(self.trainingMatrix.dtype) * self.trainingMatrix,
+            self.rowWeights[:, None] * self.ratios[:, self.infFilter],
+            driver='gelsd',
         )
 
     def __call__(self, coefs):
@@ -119,6 +126,7 @@ class ensemble:
             'device': config['device'],
             'c0': config['c0'],
             'features': config['features'],
+            'sm_weight': config.get('sm_weight', 1),
         }
         n_events = int(features.shape[0])
         self.zeros_mask = None

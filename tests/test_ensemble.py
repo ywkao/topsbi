@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import torch
 
@@ -72,3 +73,40 @@ def test_ensemble_rejects_seeds_at_different_points(ensemble_config):
     FakeFullLikelihood.zeros_masks = {'s2': other}
     with pytest.raises(ValueError):
         build.ensemble(ensemble_config, torch.zeros(N_EVENTS, 2))
+
+
+class FakeCache:
+    """Stands in for EnsembleCache with one seed: SM row last, noisy rows before it."""
+
+    def __init__(self, sm_weight):
+        gen = torch.Generator().manual_seed(0)
+        self.seeds = ['a']
+        self.mask = ZEROS_MASK.numpy()
+        self.Theta = torch.tensor([[1.0, 1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 2.0, 4.0], [1.0, 0.0, 0.0]]).double()
+        gammas = torch.rand(3, N_EVENTS, generator=gen, dtype=torch.float64) + 1
+        noise = torch.randn(4, N_EVENTS, generator=gen, dtype=torch.float64)
+        noise[-1] = 0  # the SM network closes
+        self.ratios = (self.Theta @ gammas + noise).numpy()
+        self.seed_filter = {'a': np.ones(N_EVENTS, dtype=bool)}
+        self.sm_weight = sm_weight
+
+    def network(self, seed):
+        return {'networks': ['p1', 'p2', 'p3', 'sm'], 'Theta': self.Theta.numpy()}
+
+    def seed_ratios(self, seed):
+        return self.ratios
+
+    def row_weights(self, seed):
+        w = np.ones(4)
+        w[-1] = self.sm_weight
+        return w
+
+
+def test_sm_weight_pins_gamma_sm_to_sm_ratio():
+    from topsbi.validation import refit_without
+
+    unweighted = refit_without(FakeCache(1), [])
+    weighted = refit_without(FakeCache(1e4), [])
+    sm_ratio = FakeCache(1).ratios[-1]
+    assert np.abs(unweighted.gammas[0] - sm_ratio).max() > 1e-2
+    assert np.allclose(weighted.gammas[0], sm_ratio, atol=1e-6)
