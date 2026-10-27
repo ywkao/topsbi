@@ -1,6 +1,9 @@
+import os
+
 import numpy as np
 import pytest
 import torch
+import yaml
 
 import topsbi.tools.buildLikelihood as build
 from topsbi.tools.data import get_lower_tri
@@ -110,3 +113,23 @@ def test_sm_weight_pins_gamma_sm_to_sm_ratio():
     sm_ratio = FakeCache(1).ratios[-1]
     assert np.abs(unweighted.gammas[0] - sm_ratio).max() > 1e-2
     assert np.allclose(weighted.gammas[0], sm_ratio, atol=1e-6)
+
+
+def test_likelihood_device_overrides_training_config(train_config, tmp_path):
+    """A network trained with device: cuda loads and evaluates on the device given at inference, returning CPU ratios."""
+    from conftest import N_FEATURES
+    from topsbi.model.net import Net
+    from topsbi.tools.buildLikelihood import likelihood
+
+    config = dict(train_config, device='cuda')
+    os.makedirs(f'{config["name"]}/complete')
+    torch.save(Net(N_FEATURES, 'cpu', config['network']).state_dict(), f'{config["name"]}/model.pt')
+    with open(f'{config["name"]}/complete/performance.yml', 'w') as f:
+        yaml.safe_dump({}, f)
+    path = tmp_path / 'network.yml'
+    path.write_text(yaml.safe_dump(config))
+
+    network = likelihood(str(path), N_FEATURES, 'cpu')
+    lr = network(torch.rand(10, N_FEATURES))
+    assert network.config['device'] == 'cpu'
+    assert lr.device.type == 'cpu' and lr.shape == (10,) and (lr > 0).all()

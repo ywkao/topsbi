@@ -7,16 +7,19 @@ torch.set_num_threads(1)
 
 
 class likelihood:
-    def __init__(self, config, nFeatures):
+    def __init__(self, config, nFeatures, device=None):
         """
         Load a trained network and prepare for conversion to the likelihood ratio.
 
         Args:
             config: path to yaml file used to configure the network training
             nFeatures: number of features used in training
+            device: device to evaluate on, overriding the training config's (e.g. cuda configs evaluated on a CPU)
         """
         with open(config) as f:
             self.config = yaml.safe_load(f)
+        if device:
+            self.config['device'] = device
         if 'network' in self.config.keys():
             network = self.config['network']
         else:
@@ -36,12 +39,12 @@ class likelihood:
         Args:
             features: non-normalized feateures to be evaluated by the network
         Returns:
-            lr: evaluated likelihood ratio
+            lr: evaluated likelihood ratio, on the CPU
         """
         with torch.no_grad():
-            s = self.model(features)
+            s = self.model(features.to(self.config['device']))
         lr = (s / (1 - s)).flatten()
-        return lr
+        return lr.cpu()
 
 
 class full_likelihood:
@@ -57,14 +60,15 @@ class full_likelihood:
         Args:
             config: dictionary containing the networks and parameters for network ensemble; optional sm_weight
                 (default 1) weights the SM row of the least-squares fit, so the shared gamma_sm follows the
-                well-closing SM network instead of being pulled by noisier networks
+                well-closing SM network instead of being pulled by noisier networks; optional device (e.g. cuda)
+                evaluates every network there instead of on the device in its training config
             features: non-normalized feateures to be evaluated by the networks
         """
         self.config = config
         self.trainingMatrix = []
         self.ratios = []
         if 'sm' in config.keys():
-            sm_network = likelihood(self.config['sm'], len(self.config['features']))
+            sm_network = likelihood(self.config['sm'], len(self.config['features']), self.config.get('device'))
             self.wcs = sm_network.config['wcs']
             sm_ratio = sm_network(features)
 
@@ -74,7 +78,7 @@ class full_likelihood:
             return {tuple(sorted(p)) for p in terms} == {tuple(sorted(p)) for p in zero_terms}
 
         for i, network_yaml in tqdm.tqdm(enumerate(self.config["networks"]), total=len(self.config['networks'])):
-            network = likelihood(network_yaml, len(self.config["features"]))
+            network = likelihood(network_yaml, len(self.config["features"]), self.config.get('device'))
             if network.config['wcs'] != self.wcs or not same(load_zero_terms(network.config)):
                 raise ValueError(f'{network_yaml} uses different wcs or zero_terms than the SM network')
             self.trainingMatrix += [get_lower_tri(network.config['c1'])]
