@@ -544,6 +544,20 @@ def objective_weights(cfg, wcs, mask, flagged, Theta, m):
     return np.diag(np.where(usable, w / np.where(usable, sigma0_2, 1), 0))
 
 
+def point_kinds(Theta, names, kinds):
+    """
+    Kind of every training point from its row of Theta, independent of how its directory is named:
+    'sm' (no WC moved), 'scan' (one WC) or 'cross' (two or more).
+
+    Args:
+        Theta: [n_networks, K] expanded training points
+        names: network names (rows of Theta)
+        kinds: component kinds of the columns of Theta (component_labels)
+    """
+    moved = (np.asarray(Theta)[:, np.asarray(kinds) == 'linear'] != 0).sum(1)
+    return {n: 'sm' if m == 0 else 'scan' if m == 1 else 'cross' for n, m in zip(names, moved)}
+
+
 def unconstrained_components(Theta, rtol=1e-10):
     """
     Components the training design cannot determine: those whose column direction has a part in the null space of
@@ -889,6 +903,7 @@ def main(config_path, refit=False):
         f'{name}/plots/network_misclosure.png',
         notes=notes,
         per_seed=network_misclosure(networks, sums['sm_yield'], per_seed=True),
+        point_kinds=point_kinds(first['Theta'], first['networks'], kinds),
     )
     design = cache.network(cache.seeds[0])
     Theta, names = design['Theta'].astype(np.float64), list(design['networks'])

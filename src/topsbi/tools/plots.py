@@ -1638,7 +1638,9 @@ POINT_KINDS = {
 }
 
 
-def plot_network_misclosure(misclosure, yield_ratio, network_tex, outname, notes=None, n_labels=3, per_seed=None):
+def plot_network_misclosure(
+    misclosure, yield_ratio, network_tex, outname, notes=None, n_labels=3, per_seed=None, point_kinds=None
+):
     '''
     Misclosure m_n of every training network against the size of its training point (inclusive yield relative to the
     SM, lambda(theta_1) / lambda_SM, linear) on a log scale, by kind of point; suspects ringed in their attribution colours and the
@@ -1654,10 +1656,13 @@ def plot_network_misclosure(misclosure, yield_ratio, network_tex, outname, notes
         notes: {network name: 'dropped' or 'retrain'}
         n_labels: networks labelled, largest m_n first
         per_seed: {network name: [m_n of every seed]} (network_misclosure with per_seed=True), optional
+        point_kinds: {network name: 'sm', 'scan' or 'cross'} from the training points (validation.point_kinds);
+            without it the kind is guessed from the name ('sm', 'cross_terms/...')
     '''
     notes = notes or {}
     names = [n for n in misclosure if n in yield_ratio]
-    kind = {n: 'sm' if n == 'sm' else 'cross' if n.startswith('cross_terms/') else 'scan' for n in names}
+    guess = {n: 'sm' if n == 'sm' else 'cross' if n.startswith('cross_terms/') else 'scan' for n in names}
+    kind = {n: (point_kinds or {}).get(n, guess[n]) for n in names}
     m = np.array([misclosure[n] for n in names])
     x = np.array([yield_ratio[n] for n in names])
     shown = np.concatenate([m] + ([np.concatenate([per_seed[n] for n in names])] if per_seed else []))

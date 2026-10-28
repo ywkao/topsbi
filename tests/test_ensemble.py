@@ -133,3 +133,16 @@ def test_likelihood_device_overrides_training_config(train_config, tmp_path):
     lr = network(torch.rand(10, N_FEATURES))
     assert network.config['device'] == 'cpu'
     assert lr.device.type == 'cpu' and lr.shape == (10,) and (lr > 0).all()
+
+
+def test_point_kinds_from_training_points():
+    """SM, single-WC and two-WC points are told apart by their rows of Theta, whatever their directory names."""
+    from topsbi.tools.ensembleCache import component_labels
+    from topsbi.validation import point_kinds
+
+    wcs = ['a', 'b', 'c']
+    mask = np.ones(10, dtype=bool)
+    _, kinds = component_labels(wcs, mask)
+    points = {'x/SM_SM': [1, 0, 0, 0], 'x/a_5p': [1, 0.5, 0, 0], 'y/a_x_c': [1, 0.5, 0, -2.0]}
+    Theta = np.stack([get_lower_tri(p).numpy() for p in points.values()])
+    assert point_kinds(Theta, list(points), kinds) == {'x/SM_SM': 'sm', 'x/a_5p': 'scan', 'y/a_x_c': 'cross'}
