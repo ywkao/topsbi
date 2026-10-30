@@ -1,0 +1,166 @@
+# Migration note: dev → eddie/main (ywk)
+
+全部只在 local，沒有 push。
+
+## Branches (base: `eddie/main` @ 6115263)
+
+| branch | commit | 內容 |
+|---|---|---|
+| `fix/crashes` | 9dc4e4a | `ensemble`：seeds 取平均（原本是總和，r(SM)=N）；`full_likelihood` 沒有 `sm` 時不再 crash |
+| | cb871fc | `toy_builder`：計數 accepted events，而不是 batches |
+| | 540354f | `train.py`：移除重複的 feature 標準化（merge c36ce8c 帶回來的；main 自己的 test 因此 fail） |
+| `port/dev` (on top) | c796612 | stitched：`get_probabilities` 用 float64 |
+| | e2e3b47 | evaluation 時關掉 dropout（`eval()`） |
+| | 0004d96 | stitched：`sanitize_mask` 丟掉 w≤0 或極端 weights（config key `sanitize`） |
+| | 8e4bdc3 | 用 `config['device']` 訓練、`no_grad` evaluation、`BatchSampler` |
+| | 82b6d7e | `scripts/scan.py` / `replot_scan.py`：ensemble vs truth 的 1D scan |
+| | 7b0126d | `scripts/shap_features.py`：單一網路的 SHAP feature ranking |
+| | dabf409 | calibration 和 kinematics 圖改用 p0 加權（原本比的是 mean(p1/p0)，不是網路學的 Σp1/Σp0）；修正 r 和 r̂ 的 legend 標反 |
+| | dbcb604 | `scan.py --data-values`：把樣本 reweight 成任意點的 pseudo-data（近 SM closure） |
+| | 23da3fd | `full_likelihood`：morph unnormalized 的 w(c1)/w(c0)（normalized ratio 不是二次式；main 也有這個 bug） |
+| | 992aad9 | `scan.py --window`：每個 WC 掃 data ± frac·\|data\|（舊 hash 3bcc25e） |
+| | a0ca919 | `train.py`：config key `bootstrap_seed`，固定 train/test split，和 `seed` 分開（舊 hash 209ba10） |
+| | 743ca09 | README notes（舊的 7c5f83b 和之後的 README 修改 squash 成一個，放在最後） |
+
+- Tests：`pytest tests/` → 21 passed, 1 xfailed（2026-10-14）。
+- 沒修（upstream 已在處理）：C `bootstrap: false`（issue #4）、D `validation.py`（#5，on hold）、E（PR #10 已修）。
+- 還沒 port 的 dev 功能：wandb、plotEvery、optuna `tune.py`、`prepare_config.py`、latex。shap 已 port（7b0126d）；collect_plots 有 local 版本（`local/collect_plots.py`）。
+- 所有 commit message 都已改成 `Assisted-by:`（3bcc25e → 992aad9、209ba10 → a0ca919）。worktree `port-209ba10` 沿用舊 hash，code 相同。
+
+`fix/crashes` 沒有改寫，表中前三個 hash 在那個 branch 上仍然正確；`port/dev` 上對應的是改寫後的 045b3dd、bccb0ab、b31f197。
+
+### eddie/main 的更新和 `port/rebased`（2026-10-15）
+
+Eddie 改寫了 main 的歷史（例如 ff65ac6 → 74d9de9），共同祖先退回 5e71fc3（#11）。eddie/main @ a733f77 多了 #12–#15：
+
+| 更新 | 對我們的影響 |
+|---|---|
+| `get_weights`：保留 ×1000、**不再除以 `wg`**，`AGENTS.md` 寫明不能除以 generation point 的權重 | weights_only 的問題已解決 |
+| `get_probabilities`（stitched）：**不再除以 pg**，只回傳 (p0, p1) | 和我們訓練用的 stitched 語意不同；**舊結果要重現仍要用 `port/dev`** |
+| CI：`mean_norm` debug print 已拿掉，tests 24 passed | 我們的 `fix/ci-mean-norm-format`（13e527c）已無用 |
+| `ensemble` 改寫：平均各 seed 的 gammas，用 `infFilter` 對齊 | 取代 045b3dd 的 ensemble 部分 |
+| Metrics：`rms_bias`、`pull`、`ci_diff`、`group_closure`（w0 加權），`holdout` 選項 | 取代 dabf409；用來診斷近 SM 偏差（`local/eval_metrics.py`） |
+| 預設 scheduler 改 plateau；`AGENTS.md`、`weights_only.yml` 範例 | 我們的 configs 都指定 cosine，不受影響 |
+
+upstream 仍然沒有：任何 `.eval()`（dropout 在 test loss、early stopping、likelihood 都開著）、SM row 長度、toy_builder 計數、BatchSampler/`no_grad`、`bootstrap_seed`、scan/SHAP 工具。
+
+**`port/rebased`**（worktree `../topsbi-wt/rebased`，從 eddie/main a733f77 開始，31 tests passed、ruff 通過，沒有 push）：
+
+目前狀態和每個 commit 的 PR 進度以主目錄的 `README_upstream_status_ywk.md`（untracked，定期回顧）為準；下表是 port 的來源。
+
+| commit | 來源 | 處理 |
+|---|---|---|
+| 5638eaa | bccb0ab | toy_builder，直接 cherry-pick |
+| 2e1d91f | 045b3dd | 只留 SM row 的修正，ensemble 用 upstream 的 |
+| 6e55cd9 | e2e3b47 | dropout `eval()`，手動解衝突 |
+| 1430da5 | 8e4bdc3 | BatchSampler + `no_grad`，手動重寫（upstream 已把資料放到 device） |
+| de052ee | a0ca919 | `bootstrap_seed`，手動 port |
+| 37f7194、006dbec、3af0a5f、8edcd0d | 82b6d7e、7b0126d、dbcb604、992aad9 | scan 和 SHAP 工具，直接 cherry-pick |
+| 769f3b4 | 新增 | `scan.py` 改用 upstream 的 `get_probabilities`（不用 cg）；ruff format |
+| 3b4c6cf | 743ca09 | README notes |
+| 2e7efd8 | 新增 | `year_loc: null`：沒有 year 欄位的單一 era 資料，所有 events 用 `lumi[0]`（weights_only 用） |
+| d11cea0 | 新增 | `group_cols`：closure 分組欄位可設定，`[]` 為單一組（upstream 寫死 21、19，13 欄的資料會 IndexError） |
+
+沒放進去：b31f197、dabf409、CI 修正（已被取代）；c796612、0004d96（stitched 語意已改）；**23da3fd**（只適用 stitched，用在 weights_only 會重複乘 yield ratio；等決定 method 再處理）。
+
+固定版本的 worktree：`../topsbi-wt/port-d11cea0`（weights_only 的訓練用）。
+
+**PR #16**（2026-10-16，branch `pr/eval-dropout`，從 eddie/main 2b1c033 開始）：dropout `eval()`（6e55cd9）+ toy_builder（5638eaa）+ train/test loss 對齊（新的，port/rebased 沒有）。之後 PR B（`year_loc`、`group_cols`）、PR C（BatchSampler/`no_grad`、`bootstrap_seed`）視需要再開。
+
+**eddie/main 2b1c033**（drop zero cols in gamma，port/rebased 還沒包含）：`zero_terms`、`get_probabilities` 改 float64，`full_likelihood` **必須有 `sm` 網路**（我們的 ensemble 沒有，scan 會壞；要和 Eddie 討論 c0 = SM 時能否省略）。等 PR #16 merge 後再一起 rebase。
+
+### Commit hash 對照（2026-10-13）
+
+`port/dev` 的 commit message 統一改成 `Assisted-by: claude-code:claude-opus-5-5`，程式碼沒變，但 hash 全部換了。**run 名稱、output 目錄、EOS 路徑、condor configs 和 worktree（`topsbi-wt/port-a6ff4bd`、`port-eae2959`）都沿用舊 hash**，因為那是當時實際用來訓練的 code，舊 commit 仍可從這兩個 worktree 取得。之後的 `port-209ba10` 用的是改寫後的新 hash。
+
+| 舊 | 新 | commit |
+|---|---|---|
+| 9dc4e4a | 045b3dd | Fix ensemble mean and full_likelihood without an sm network |
+| cb871fc | bccb0ab | toy_builder: count accepted events, not batches |
+| 540354f | b31f197 | Fix double feature standardisation in train.py |
+| 045f8a7 | c796612 | stitched: compute get_probabilities in float64 like get_weights |
+| 97cb288 | e2e3b47 | Turn dropout off whenever the network is evaluated |
+| 6a898ab | 0004d96 | stitched: drop events with non-positive or extreme weights |
+| a6ff4bd | 8e4bdc3 | Train on config['device'] and evaluate without autograd |
+| 482bf4d | 82b6d7e | Add 1D likelihood scan of the ensemble against the analytic truth |
+| e4a12f4 | 7b0126d | Add SHAP feature ranking for a trained network |
+| 44fc479 | dabf409 | Weight calibration and kinematic plots by p0 |
+| eae2959 | dbcb604 | scan.py: closure against pseudo-data reweighted to any point |
+| e01fb36 | 23da3fd | Morph the unnormalized ratio in full_likelihood |
+
+## Environment
+
+```bash
+source /cvmfs/sft.cern.ch/lcg/views/LCG_109_cuda/x86_64-el9-gcc13-opt/setup.sh
+export PYTHONPATH=$PWD/src:$PYTHONPATH   # 要 append，覆蓋掉會找不到 torch
+```
+
+Local 檔案都放在 `local/`（已加進 `.git/info/exclude`）。
+
+## Data（main 格式）
+
+`/eos/cms/store/user/ykao/topsbi/pretraining_main_highlevel/{train,test,validation}.p`
+
+```bash
+python3 local/convert_pretraining.py <dev pretraining dir> <out dir> features_highlevel.yml
+```
+
+- 只保留 13 個 highlevel features（float32），順序和 `features_highlevel.yml` 相同；ids 欄位補零。
+- **Off-diagonal coefs ×√2**：main 的 `get_lower_tri(off_diag=1)` 才會和 dev 的 weights 一致。可用 w(cg) 的 std/mean 驗證：0.007 是對的，0.46 是錯的。
+
+## Training
+
+```bash
+# 從 condor/configs 的 dev configs 產生 port configs → local/condor/configs/<tag>_<point>.yml
+python3 local/make_configs.py <tag> <point> [<point> ...]
+# 單一 job，在 local 跑（要 GPU，或把 config 裡的 device 改成 cpu）
+python3 -m topsbi.train local/condor/configs/<tag>_<point>.yml
+```
+
+Output 位置：`/eos/cms/store/user/ykao/topsbi/results/port/<tag>/<point>/seed_2`
+
+## Condor (lxplus)
+
+Jobs 從凍結的 worktree 讀 code，所以之後在 repo 裡切 branch 不會影響正在跑的 jobs。Submit file 不能含 /eos 路徑，所以要從 AFS 送出。
+
+```bash
+git worktree add --detach ../topsbi-wt/port-<sha> <sha>
+cd ~/topsbi-condor          # run.sh, submit.sub, submit_list.sub
+# 用 glob 送出
+condor_submit code=/eos/home-y/ykao/SWAN_projects/analysis/topsbi-wt/port-<sha> \
+    configs="/eos/home-y/ykao/SWAN_projects/analysis/topsbi/local/condor/configs/<tag>_*.yml" submit.sub
+# 或用 list 送出（每行一個 config 路徑）
+condor_submit code=<worktree> configlist=<list.txt> submit_list.sub
+```
+
+Resources：1 GPU（Capability ≥ 7.5）、16 GB、longlunch；每個 job 約 5 分鐘（A100/H100）。
+
+## Checks
+
+```bash
+# 單一網路 vs truth（corr(log r)、E_SM[r̂]），dev 和 port 並排比較
+python3 local/compare_networks.py local/condor/configs/a6ff4bd_SM_cQj31.yml \
+    dev=/eos/cms/store/user/ykao/topsbi/results/fastTrain/gen/highlevel_n256_dropout_cosine/SM_cQj31/seed_2 \
+    port=/eos/cms/store/user/ykao/topsbi/results/port/a6ff4bd/SM_cQj31/seed_2
+# SHAP feature ranking（預設用 validation.p，CPU 約 1 分鐘）→ <name>/complete/shap_{summary.png,ranking.txt}
+python3 scripts/shap_features.py local/condor/configs/a6ff4bd_SM_cQj31.yml [-o <outdir>]
+# 把一個 tag 的訓練圖整理到網頁（每種圖一個資料夾，含 index.php 和 performance.csv；重跑只複製新的檔案，456 個網路約 30 分鐘）
+python3 local/collect_plots.py /eos/cms/store/user/ykao/topsbi/results/port/<tag> /eos/home-y/ykao/www/topsbi/results_<date>_<tag>
+# Ensemble closure scan（lxplus 沒有 GPU：ensemble 裡的 configs 要用 device: cpu）
+python3 scripts/scan.py -p local/ensemble_a6ff4bd.yml --wc <WCs> --truth --threshold 0 \
+    --drop-negative --others cg -o output/port_a6ff4bd_closure
+```
+
+## Results (a6ff4bd, 152 networks)
+
+- 單一網路 port ≈ dev：SM_cQj31 corr 0.660 vs 0.657；cQd8_cQd8 0.265 vs 0.266。
+- **Ensemble closure 失敗，dev 和 port 都一樣**：
+  - truth 的最小值全部落在 cg（16/16），但 ensemble 的 best fit 偏差 ~1–2，68% 區間卻只有 ~±0.02（系統性偏差）。
+  - port 有 8/16 個 WC 撞到 scan 範圍的邊界。
+  - 結果在 `output/port_a6ff4bd_closure/`；dev 的對照在 `output/scan_all_closure_subset/`。
+- 推測（未驗證）：lstsq morphing 外推到 cg 時放大了少數網路的偏差；136/152 個 training points 有 w(c1) ≤ 0 的 events。
+
+## Next
+
+1. 152 個網路逐一跑 `compare_networks.py`，找出 E_SM[r̂] 或 corr 異常的網路。
+2. 把 truth r 餵進 lstsq：如果 closure 成立，問題在網路；如果不成立，問題在 training points 或 morphing 本身。
