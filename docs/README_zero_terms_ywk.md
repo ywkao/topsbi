@@ -55,3 +55,23 @@ zero_terms: /eos/home-y/ykao/SWAN_projects/analysis/topsbi/local/zero_terms_hlco
 - 訓練：這些欄位從權重裡拿掉。fit：這些 γ 被 mask 掉，設為 0。
 - **同一個 ensemble 的所有網路（包括 SM_SM）的 `zero_terms` 必須相同**，否則 `full_likelihood` 會報錯。現有的 357 個網路訓練時沒有 `zero_terms`，所以這個檔案是給下一輪訓練用的。
 - zero terms 取決於樣本：換成 reco samples 後要重跑。
+
+## AN 的表格：交叉項的 rms_ev、quantile size、四種正負號的 ESS（2026-10-29）
+
+`local/cross_terms_table.py` 輸出 LaTeX 表格（booktabs + longtable）和 CSV。每列一個交叉項，照 quantile size 由大到小：
+- `rms_ev`：5% 點 (c_p,i, c_p,j) 的 c_i c_j w_ij / w_SM，以 w0 加權的 RMS（同 `cross_terms_survey.py`）。
+- `quantile size`：讀上面 `zero_terms_quantile.py` 的 CSV；被丟掉的項標 †。
+- `(+,+)`…`(-,-)`：四種正負號的 n_eff/N，最大的粗體（四捨五入後並列的都粗體）。「+」是 c_p 本身，「−」是 −c_p。
+
+```bash
+source /cvmfs/sft.cern.ch/lcg/views/LCG_109_cuda/x86_64-el9-gcc13-opt/setup.sh
+export PYTHONPATH=/eos/home-y/ykao/SWAN_projects/analysis/topsbi-wt/rebased-fa6f982/src:$PYTHONPATH
+cd /eos/home-y/ykao/SWAN_projects/analysis/topsbi
+D=/eos/cms/store/user/ykao/topsbi/pretraining_main_highlevel_cos_log_pilot
+# 先要有 local/zero_terms_hlcos.csv（上一節的指令）
+python3 local/cross_terms_table.py $D local/wc_targets_hlcos.yml local/zero_terms_hlcos.csv -o local/tables/cross_terms_all          # 120 項，約 1.5 分鐘
+python3 local/cross_terms_table.py $D local/wc_targets_hlcos.yml local/zero_terms_hlcos.csv -o local/tables/cross_terms_kept --kept  # 只留 56 項
+```
+- 選項：`-t 0.1` 改用 10% 的點（`wc_targets_hlcos.yml` 裡有的 target 都可以）。
+- 在 AN 裡：preamble 加 `\usepackage{booktabs,longtable}`，正文 `\input{cross_terms_kept}`。label 是 `tab:cross_terms`。
+- 列距太擠可以在 `\input` 前加 `\renewcommand{\arraystretch}{1.2}`。
